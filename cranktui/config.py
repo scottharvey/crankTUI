@@ -67,3 +67,45 @@ def clear_last_device() -> None:
     config.pop("last_device_address", None)
     config.pop("last_device_name", None)
     save_config(config)
+
+
+def get_rider_weight_kg() -> float:
+    """Get the rider weight in kg.
+
+    Returns:
+        Rider weight in kg (default 75.0)
+    """
+    config = load_config()
+    return config.get("rider_weight_kg", 75.0)
+
+
+def set_rider_weight_kg(weight_kg: float) -> None:
+    """Set the rider weight in kg.
+
+    Args:
+        weight_kg: Rider weight in kg
+    """
+    config = load_config()
+    config["rider_weight_kg"] = weight_kg
+    save_config(config)
+
+
+def get_bike_weight_kg() -> float:
+    """Get the bike weight in kg.
+
+    Returns:
+        Bike weight in kg (default 10.0)
+    """
+    config = load_config()
+    return config.get("bike_weight_kg", 10.0)
+
+
+def set_bike_weight_kg(weight_kg: float) -> None:
+    """Set the bike weight in kg.
+
+    Args:
+        weight_kg: Bike weight in kg
+    """
+    config = load_config()
+    config["bike_weight_kg"] = weight_kg
+    save_config(config)

@@ -7,6 +7,7 @@ from textual.widgets import Footer, Header, Static
 
 from cranktui.routes.route import Route
 from cranktui.screens.devices import DevicesScreen
+from cranktui.screens.settings import SettingsScreen
 from cranktui.state.state import get_state
 
 
@@ -33,6 +34,7 @@ class RouteSelectScreen(Screen):
         ("down", "navigate_down", "Down"),
         ("enter", "select_route", "Select"),
         ("d", "show_devices", "Devices"),
+        ("s", "show_settings", "Settings"),
     ]
 
     CSS = """
@@ -177,3 +179,7 @@ class RouteSelectScreen(Screen):
     def action_show_devices(self) -> None:
         """Show the devices screen."""
         self.app.push_screen(DevicesScreen())
+
+    def action_show_settings(self) -> None:
+        """Show the settings screen."""
+        self.app.push_screen(SettingsScreen())
