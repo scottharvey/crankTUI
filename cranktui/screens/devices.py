@@ -9,6 +9,9 @@ from textual.widgets import Button, Footer, Label, Static
 class DeviceItem(Static):
     """A single device in the list."""
 
+    # Disable Tab focus - only arrow keys
+    can_focus_children = False
+
     def __init__(self, name: str, address: str, rssi: int, is_connected: bool = False, **kwargs):
         super().__init__(**kwargs)
         self.device_name = name
@@ -20,8 +23,8 @@ class DeviceItem(Static):
     def render(self) -> str:
         """Render device information."""
         signal_strength = "●●●" if self.rssi > -60 else "●●○" if self.rssi > -75 else "●○○"
-        status = "[Connected]" if self.is_connected else ""
-        return f"{self.device_name} {status}\n{self.device_address}  Signal: {signal_strength}"
+        status = "✓ " if self.is_connected else ""
+        return f"{status}{self.device_name}\n{self.device_address}  Signal: {signal_strength}"
 
 
 class DevicesScreen(ModalScreen[None]):
@@ -32,6 +35,7 @@ class DevicesScreen(ModalScreen[None]):
         ("up", "navigate_up", "Up"),
         ("down", "navigate_down", "Down"),
         ("space", "toggle_connection", "Connect/Disconnect"),
+        ("tab", "focus_buttons", "Focus Buttons"),
     ]
 
     CSS = """
@@ -44,14 +48,13 @@ class DevicesScreen(ModalScreen[None]):
         height: 90%;
         border: round white;
         background: $surface;
-        padding: 1 2;
+        padding: 1;
     }
 
     #header {
         width: 100%;
         height: auto;
         content-align: center middle;
-        margin-bottom: 1;
         padding-bottom: 1;
         border-bottom: solid white;
     }
@@ -59,11 +62,11 @@ class DevicesScreen(ModalScreen[None]):
     #device-list {
         width: 100%;
         height: 1fr;
-        padding: 1;
+        padding: 0 1;
     }
 
     DeviceItem {
-        margin: 1 0;
+        margin: 0;
         padding: 1;
         background: transparent;
         border: round $surface;
@@ -77,7 +80,15 @@ class DevicesScreen(ModalScreen[None]):
         width: 100%;
         height: auto;
         align: center middle;
-        margin-top: 1;
+        padding-top: 1;
+    }
+
+    #status-bar {
+        width: 100%;
+        height: auto;
+        padding: 1;
+        text-align: center;
+        border-top: solid white;
     }
 
     Button {
@@ -112,6 +123,7 @@ class DevicesScreen(ModalScreen[None]):
                 yield DeviceItem("Heart Rate Monitor", "AA:11:BB:22:CC:33", -80)
                 yield DeviceItem("KICKR CLIMB", "DD:EE:FF:00:11:22", -62)
                 yield DeviceItem("Wahoo CADENCE", "33:44:55:66:77:88", -78)
+            yield Static("", id="status-bar")
             with Horizontal(id="buttons"):
                 yield Button("Refresh", id="refresh-btn")
                 yield Button("Close", id="close-btn")
@@ -157,10 +169,22 @@ class DevicesScreen(ModalScreen[None]):
         device.is_connected = not device.is_connected
         device.refresh()
 
+        # Update status bar
+        status_bar = self.query_one("#status-bar", Static)
+        if device.is_connected:
+            status_bar.update(f"Connected to {device.device_name}")
+        else:
+            status_bar.update(f"Disconnected from {device.device_name}")
+
     def action_refresh(self) -> None:
         """Refresh device list."""
         # In future, this will trigger actual BLE scan
         pass
+
+    def action_focus_buttons(self) -> None:
+        """Focus the first button."""
+        refresh_btn = self.query_one("#refresh-btn", Button)
+        refresh_btn.focus()
 
     def action_close_modal(self) -> None:
         """Close the devices screen."""
