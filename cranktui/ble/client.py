@@ -433,12 +433,11 @@ class BLEClient:
             # Update latest power and send combined data
             self._latest_power_w = float(power)
 
-            # If we don't have speed from CSC, estimate from power (very rough)
-            # This is temporary until we implement proper physics-based speed calculation
-            if self._latest_speed_kmh == 0.0 and power > 0:
-                # Rough estimation: ~20W per km/h at moderate effort
-                self._latest_speed_kmh = power / 20.0
-                debug_log(f"Estimating speed from power: {self._latest_speed_kmh:.1f} km/h")
+            # If we don't have speed from CSC, calculate from power using physics
+            # Note: Speed calculation now happens in the callback handler where we have access to grade
+            if self._latest_speed_kmh == 0.0:
+                # Will be calculated by callback handler with current grade
+                pass
 
             # Send combined data from all characteristics
             parsed = {

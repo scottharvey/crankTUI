@@ -166,10 +166,25 @@ class CrankTUI(App):
         Args:
             data: Dictionary with power_w, cadence_rpm, speed_kmh, distance_m
         """
+        from cranktui.config import get_bike_weight_kg, get_rider_weight_kg
+        from cranktui.simulation.physics import power_to_speed_kmh
+
+        speed_kmh = data['speed_kmh']
+
+        # If no speed from trainer, calculate from power using physics
+        if speed_kmh == 0.0 and data['power_w'] > 0:
+            metrics = await self.state.get_metrics()
+            total_mass = get_rider_weight_kg() + get_bike_weight_kg()
+            speed_kmh = power_to_speed_kmh(
+                data['power_w'],
+                metrics.grade_pct,
+                total_mass
+            )
+
         await self.state.update_metrics(
             power_w=data['power_w'],
             cadence_rpm=data['cadence_rpm'],
-            speed_kmh=data['speed_kmh'],
+            speed_kmh=speed_kmh,
             mode="LIVE"
         )
 
