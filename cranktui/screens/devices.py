@@ -82,7 +82,6 @@ class DevicesScreen(ModalScreen[None]):
         width: 100%;
         height: auto;
         align: center middle;
-        padding-top: 1;
     }
 
     #status-bar {
