@@ -2,12 +2,63 @@
 
 from textual.app import App, ComposeResult
 from textual.containers import Container
-from textual.widgets import Header, Static
+from textual.screen import ModalScreen
+from textual.widgets import Button, Header, Label, Static
 
 from cranktui.elevation_chart import ElevationChart
 from cranktui.routes.route import Route
 from cranktui.routes.route_loader import create_demo_routes, load_all_routes
 from cranktui.screens.route_select import RouteSelectScreen
+
+
+class ConfirmBackScreen(ModalScreen[bool]):
+    """Modal dialog to confirm going back to route selection."""
+
+    CSS = """
+    ConfirmBackScreen {
+        align: center middle;
+    }
+
+    #dialog {
+        width: 50;
+        height: 11;
+        border: round white;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #question {
+        width: 100%;
+        height: auto;
+        content-align: center middle;
+        margin-bottom: 1;
+    }
+
+    #buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+    }
+
+    Button {
+        margin: 0 1;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        """Create dialog widgets."""
+        with Container(id="dialog"):
+            yield Label("Return to route selection?", id="question")
+            with Container(id="buttons"):
+                yield Button("Yes", variant="primary", id="yes")
+                yield Button("No", variant="default", id="no")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button press."""
+        if event.button.id == "yes":
+            self.dismiss(True)
+        else:
+            self.dismiss(False)
 
 
 class StatusPanel(Static):
@@ -30,6 +81,7 @@ class CrankTUI(App):
 
     BINDINGS = [
         ("q", "quit", "Quit"),
+        ("escape", "confirm_back", "Back"),
     ]
 
     CSS = """
@@ -88,6 +140,23 @@ class CrankTUI(App):
         if route:
             self.selected_route = route
             self.notify(f"Selected route: {route.name}")
+
+    def action_confirm_back(self) -> None:
+        """Show confirmation dialog before going back to route selection."""
+        # Only show dialog if we have a selected route
+        if self.selected_route:
+            self.push_screen(ConfirmBackScreen(), self.handle_confirm_back)
+
+    def handle_confirm_back(self, confirmed: bool) -> None:
+        """Handle the confirmation result."""
+        if confirmed:
+            # Clear selected route
+            self.selected_route = None
+
+            # Load routes and show selection screen
+            routes = load_all_routes()
+            if routes:
+                self.push_screen(RouteSelectScreen(routes), self.on_route_selected)
 
 
 def main():
