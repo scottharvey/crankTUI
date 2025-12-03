@@ -15,10 +15,10 @@ class ConfirmBackScreen(ModalScreen[bool]):
     """Modal dialog to confirm going back to route selection."""
 
     BINDINGS = [
-        ("up", "focus_previous", "Focus Previous"),
-        ("down", "focus_next", "Focus Next"),
-        ("left", "focus_previous", "Focus Previous"),
-        ("right", "focus_next", "Focus Next"),
+        ("up", "navigate_buttons", "Navigate"),
+        ("down", "navigate_buttons", "Navigate"),
+        ("left", "navigate_buttons", "Navigate"),
+        ("right", "navigate_buttons", "Navigate"),
     ]
 
     CSS = """
@@ -66,6 +66,16 @@ class ConfirmBackScreen(ModalScreen[bool]):
             with Container(id="buttons"):
                 yield Button("Yes", id="yes")
                 yield Button("No", id="no")
+
+    def action_navigate_buttons(self) -> None:
+        """Toggle focus between buttons."""
+        buttons = self.query(Button)
+        if len(buttons) == 2:
+            # Get currently focused button
+            if self.query_one("#yes", Button).has_focus:
+                self.query_one("#no", Button).focus()
+            else:
+                self.query_one("#yes", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button press."""
