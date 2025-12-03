@@ -11,18 +11,27 @@ from cranktui.routes.route import Route
 class ElevationChart(Widget):
     """Widget that renders an elevation profile using braille characters."""
 
-    # Braille patterns for different fill levels (0-4 dots vertical)
-    BRAILLE_LEVELS = [
-        " ",      # 0 dots - empty
-        "⠈",      # 1 dot  - top
-        "⠘",      # 2 dots - top + middle-top
-        "⠸",      # 3 dots - top + middle-top + middle-bottom
-        "⣸",      # 4 dots - all dots (filled)
-    ]
+    # Braille patterns using 2x4 dot matrix (left and right columns)
+    # Unicode braille: U+2800 base + bit pattern
+    # Bits: 0=top-left, 1=mid-left, 2=low-left, 3=bottom-left,
+    #       4=top-right, 5=mid-right, 6=low-right, 7=bottom-right
 
     def __init__(self, route: Route | None = None, **kwargs):
         super().__init__(**kwargs)
         self.route = route
+
+    def _get_braille(self, dots: list[bool]) -> str:
+        """Convert 8 dots to braille character.
+
+        Args:
+            dots: List of 8 booleans representing braille dots:
+                  [0,1,2,3,4,5,6,7] where each index corresponds to the bit position
+        """
+        value = 0x2800
+        for i, dot in enumerate(dots):
+            if dot:
+                value += (1 << i)
+        return chr(value)
 
     def render(self) -> RenderableType:
         """Render the elevation chart."""
@@ -35,8 +44,8 @@ class ElevationChart(Widget):
         if not self.route or not self.route.points:
             return Text("No route data", style="dim")
 
-        # Resample route to fit width
-        resampled_points = resample_route(self.route, width)
+        # Resample route to fit width (each char has 2 horizontal pixels)
+        resampled_points = resample_route(self.route, width * 2)
 
         # Get elevation range
         min_elev, max_elev = get_elevation_range(resampled_points)
@@ -52,29 +61,44 @@ class ElevationChart(Widget):
         pixel_height = chart_height * 4
         normalized_heights = []
         for point in resampled_points:
-            pixel_h = int(((point.elevation_m - min_elev) / elev_range) * pixel_height)
+            pixel_h = ((point.elevation_m - min_elev) / elev_range) * pixel_height
             normalized_heights.append(pixel_h)
 
-        # Build the chart from top to bottom
-        lines = []
-        for y in range(chart_height):
-            line = ""
-            for x, pixel_h in enumerate(normalized_heights):
-                # Calculate which braille level to use for this position
-                # Each character row represents 4 vertical pixels
-                row_bottom = (chart_height - y - 1) * 4
-                row_top = row_bottom + 4
+        # Create a 2D grid for the filled area
+        grid = [[False] * (width * 2) for _ in range(chart_height * 4)]
 
-                if pixel_h >= row_top:
-                    # Fully filled
-                    line += self.BRAILLE_LEVELS[4]
-                elif pixel_h > row_bottom:
-                    # Partially filled
-                    dots = pixel_h - row_bottom
-                    line += self.BRAILLE_LEVELS[dots]
-                else:
-                    # Empty
-                    line += self.BRAILLE_LEVELS[0]
+        # Draw the elevation profile by filling below the line
+        for x in range(len(normalized_heights)):
+            h = normalized_heights[x]
+            # Fill from bottom (0) up to the elevation height
+            for y in range(int(h) + 1):
+                if y < len(grid):
+                    grid[y][x] = True
+
+        # Convert grid to braille characters
+        lines = []
+        for char_row in range(chart_height):
+            line = ""
+            for char_col in range(width):
+                # Each braille character represents 2x4 pixels
+                dots = [False] * 8
+
+                # Map pixels to braille dots
+                # Left column (dots 0,1,2,3) and right column (dots 4,5,6,7)
+                for dot_row in range(4):
+                    pixel_y = (chart_height - char_row - 1) * 4 + dot_row
+
+                    # Left column
+                    pixel_x_left = char_col * 2
+                    if pixel_x_left < len(grid[0]) and pixel_y < len(grid):
+                        dots[dot_row] = grid[pixel_y][pixel_x_left]
+
+                    # Right column
+                    pixel_x_right = char_col * 2 + 1
+                    if pixel_x_right < len(grid[0]) and pixel_y < len(grid):
+                        dots[dot_row + 4] = grid[pixel_y][pixel_x_right]
+
+                line += self._get_braille(dots)
 
             lines.append(line)
 
