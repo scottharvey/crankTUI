@@ -6,6 +6,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
 from cranktui.routes.route import Route
+from cranktui.widgets.elevation_chart import ElevationChart
 
 
 class RidingScreen(Screen):
@@ -30,7 +31,6 @@ class RidingScreen(Screen):
         width: 2fr;
         border: round white;
         padding: 1;
-        content-align: center middle;
     }
 
     #stats-panel {
@@ -52,10 +52,7 @@ class RidingScreen(Screen):
         """Create child widgets."""
         yield Header(show_clock=True)
         with Container(id="main-container"):
-            yield Static(
-                "[Elevation profile will go here]",
-                id="elevation-panel"
-            )
+            yield ElevationChart(route=self.route, id="elevation-panel")
             with Container(id="stats-panel"):
                 yield Static(f"Route: {self.route.name}", classes="stat-item")
                 yield Static(f"Distance: {self.route.distance_km} km", classes="stat-item")
