@@ -56,17 +56,9 @@ class DevicesScreen(ModalScreen[None]):
         border-bottom: solid white;
     }
 
-    #status {
-        width: 100%;
-        height: auto;
-        margin-bottom: 1;
-        text-align: center;
-    }
-
     #device-list {
         width: 100%;
         height: 1fr;
-        border: round white;
         padding: 1;
     }
 
@@ -74,12 +66,11 @@ class DevicesScreen(ModalScreen[None]):
         margin: 1 0;
         padding: 1;
         background: transparent;
-        border: none;
+        border: round $surface;
     }
 
     DeviceItem:focus {
         border: round white;
-        background: $surface;
     }
 
     #buttons {
@@ -92,7 +83,7 @@ class DevicesScreen(ModalScreen[None]):
     Button {
         margin: 0 1;
         background: transparent;
-        border: none;
+        border: round $surface;
         color: white;
     }
 
@@ -114,7 +105,6 @@ class DevicesScreen(ModalScreen[None]):
         """Create dialog widgets."""
         with Container(id="devices-dialog"):
             yield Label("BLE Devices", id="header")
-            yield Static("Scanning for devices...", id="status")
             with VerticalScroll(id="device-list"):
                 # Mock devices for now
                 yield DeviceItem("KICKR SNAP 12345", "AA:BB:CC:DD:EE:FF", -55)
@@ -141,9 +131,8 @@ class DevicesScreen(ModalScreen[None]):
         self.set_timer(1.0, self.update_scan_status)
 
     def update_scan_status(self) -> None:
-        """Update the scanning status."""
-        status = self.query_one("#status", Static)
-        status.update(f"Found {len(self.device_items)} devices")
+        """Update the scanning status (no longer used)."""
+        pass
 
     def action_navigate_up(self) -> None:
         """Navigate to the previous device."""
@@ -168,18 +157,10 @@ class DevicesScreen(ModalScreen[None]):
         device.is_connected = not device.is_connected
         device.refresh()
 
-        # Update status
-        status = self.query_one("#status", Static)
-        if device.is_connected:
-            status.update(f"Connected to {device.device_name}")
-        else:
-            status.update(f"Disconnected from {device.device_name}")
-
     def action_refresh(self) -> None:
         """Refresh device list."""
-        status = self.query_one("#status", Static)
-        status.update("Scanning for devices...")
-        self.set_timer(1.0, self.update_scan_status)
+        # In future, this will trigger actual BLE scan
+        pass
 
     def action_close_modal(self) -> None:
         """Close the devices screen."""
