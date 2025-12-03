@@ -8,8 +8,8 @@ from textual.widgets import Header, Static
 class StatusPanel(Static):
     """Widget to display current status information."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         self.border_title = "Status"
 
     def compose(self) -> ComposeResult:
