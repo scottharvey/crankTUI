@@ -13,8 +13,11 @@ from cranktui.state.state import get_state
 class ElevationChart(Widget):
     """Widget that renders an elevation profile using braille characters."""
 
-    # Full braille block character
-    FULL_BLOCK = "⣿"
+    # Braille characters for different top edge patterns
+    FULL_BLOCK = "⣿"          # Full block for filled areas
+    SLOPE_UP = "⠠⣀"[1]        # Up-slope pattern: ⣀ (bottom dots filled)
+    SLOPE_DOWN = "⠤⣤"[1]      # Down-slope pattern: ⣤ (bottom + some top dots)
+    SLOPE_FLAT = "⣀"          # Flat top pattern: ⣀ (bottom row dots)
     RIDER_MARKER = "▲"
 
     # Reactive property for current distance
@@ -75,10 +78,29 @@ class ElevationChart(Widget):
                 # Calculate which row this is from bottom
                 row_from_bottom = chart_height - y - 1
 
-                # Fill if this row is at or below the elevation
-                if row_from_bottom <= h:
+                # Check if this position should be filled
+                if row_from_bottom < h:
+                    # Below the top - always use full block
                     line += self.FULL_BLOCK
+                elif row_from_bottom == h:
+                    # This is the top row - use slope-aware character
+                    # Determine slope to next column
+                    if x < len(normalized_heights) - 1:
+                        next_h = normalized_heights[x + 1]
+                        if next_h > h:
+                            # Next column is higher - upward slope
+                            line += self.SLOPE_UP
+                        elif next_h < h:
+                            # Next column is lower - downward slope
+                            line += self.SLOPE_DOWN
+                        else:
+                            # Same height - flat
+                            line += self.SLOPE_FLAT
+                    else:
+                        # Last column - use flat
+                        line += self.SLOPE_FLAT
                 else:
+                    # Above the elevation - empty
                     line += " "
 
             lines.append(line)
