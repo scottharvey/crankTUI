@@ -11,27 +11,12 @@ from cranktui.routes.route import Route
 class ElevationChart(Widget):
     """Widget that renders an elevation profile using braille characters."""
 
-    # Braille patterns using 2x4 dot matrix (left and right columns)
-    # Unicode braille: U+2800 base + bit pattern
-    # Bits: 0=top-left, 1=mid-left, 2=low-left, 3=bottom-left,
-    #       4=top-right, 5=mid-right, 6=low-right, 7=bottom-right
+    # Full braille block character
+    FULL_BLOCK = "⣿"
 
     def __init__(self, route: Route | None = None, **kwargs):
         super().__init__(**kwargs)
         self.route = route
-
-    def _get_braille(self, dots: list[bool]) -> str:
-        """Convert 8 dots to braille character.
-
-        Args:
-            dots: List of 8 booleans representing braille dots:
-                  [0,1,2,3,4,5,6,7] where each index corresponds to the bit position
-        """
-        value = 0x2800
-        for i, dot in enumerate(dots):
-            if dot:
-                value += (1 << i)
-        return chr(value)
 
     def render(self) -> RenderableType:
         """Render the elevation chart."""
@@ -44,8 +29,8 @@ class ElevationChart(Widget):
         if not self.route or not self.route.points:
             return Text("No route data", style="dim")
 
-        # Resample route to fit width (each char has 2 horizontal pixels)
-        resampled_points = resample_route(self.route, width * 2)
+        # Resample route to fit width
+        resampled_points = resample_route(self.route, width)
 
         # Get elevation range
         min_elev, max_elev = get_elevation_range(resampled_points)
@@ -57,48 +42,25 @@ class ElevationChart(Widget):
         # Reserve bottom line for distance markers
         chart_height = height - 1
 
-        # Convert elevations to pixel heights (multiply by 4 for braille resolution)
-        pixel_height = chart_height * 4
+        # Normalize heights to chart height
         normalized_heights = []
         for point in resampled_points:
-            pixel_h = ((point.elevation_m - min_elev) / elev_range) * pixel_height
-            normalized_heights.append(pixel_h)
+            normalized = int(((point.elevation_m - min_elev) / elev_range) * chart_height)
+            normalized_heights.append(normalized)
 
-        # Create a 2D grid for the filled area
-        grid = [[False] * (width * 2) for _ in range(chart_height * 4)]
-
-        # Draw the elevation profile by filling below the line
-        for x in range(len(normalized_heights)):
-            h = normalized_heights[x]
-            # Fill from bottom (0) up to the elevation height
-            for y in range(int(h) + 1):
-                if y < len(grid):
-                    grid[y][x] = True
-
-        # Convert grid to braille characters
+        # Build the chart from top to bottom
         lines = []
-        for char_row in range(chart_height):
+        for y in range(chart_height):
             line = ""
-            for char_col in range(width):
-                # Each braille character represents 2x4 pixels
-                dots = [False] * 8
+            for x, h in enumerate(normalized_heights):
+                # Calculate which row this is from bottom
+                row_from_bottom = chart_height - y - 1
 
-                # Map pixels to braille dots
-                # Left column (dots 0,1,2,3) and right column (dots 4,5,6,7)
-                for dot_row in range(4):
-                    pixel_y = (chart_height - char_row - 1) * 4 + dot_row
-
-                    # Left column
-                    pixel_x_left = char_col * 2
-                    if pixel_x_left < len(grid[0]) and pixel_y < len(grid):
-                        dots[dot_row] = grid[pixel_y][pixel_x_left]
-
-                    # Right column
-                    pixel_x_right = char_col * 2 + 1
-                    if pixel_x_right < len(grid[0]) and pixel_y < len(grid):
-                        dots[dot_row + 4] = grid[pixel_y][pixel_x_right]
-
-                line += self._get_braille(dots)
+                # Fill if this row is at or below the elevation
+                if row_from_bottom <= h:
+                    line += self.FULL_BLOCK
+                else:
+                    line += " "
 
             lines.append(line)
 
