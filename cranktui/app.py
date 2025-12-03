@@ -42,16 +42,13 @@ class ConfirmBackScreen(ModalScreen[bool]):
 
     Button {
         margin: 0 1;
-    }
-
-    Button.-primary {
         background: transparent;
-        border: round white;
+        border: none;
         color: white;
     }
 
-    Button.-primary:hover {
-        background: $surface;
+    Button:focus {
+        border: round white;
     }
     """
 
@@ -60,8 +57,8 @@ class ConfirmBackScreen(ModalScreen[bool]):
         with Container(id="dialog"):
             yield Label("Return to route selection?", id="question")
             with Container(id="buttons"):
-                yield Button("Yes", variant="primary", id="yes")
-                yield Button("No", variant="default", id="no")
+                yield Button("Yes", id="yes")
+                yield Button("No", id="no")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button press."""
