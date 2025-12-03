@@ -18,7 +18,6 @@ class ElevationChart(Widget):
     SLOPE_UP = "⣠"            # Up-slope: right side higher (dots 4,5,6,7,8)
     SLOPE_DOWN = "⣷"          # Down-slope: full except top-right missing (all except dots 5,6,7)
     SLOPE_FLAT = "⣀"          # Flat top: bottom row (dots 4,8)
-    RIDER_MARKER = "▲"
 
     # Reactive property for current distance
     current_distance_m: reactive[float] = reactive(0.0)
@@ -70,18 +69,22 @@ class ElevationChart(Widget):
         # Calculate rider position
         rider_x = self._calculate_rider_position(width)
 
-        # Build the chart from top to bottom
-        lines = []
+        # Build the chart from top to bottom using Rich Text for styling
+        chart_text = Text()
+
         for y in range(chart_height):
-            line = ""
             for x, h in enumerate(normalized_heights):
                 # Calculate which row this is from bottom
                 row_from_bottom = chart_height - y - 1
 
+                # Determine if this is the rider's column
+                is_rider_column = (rider_x is not None and x == rider_x)
+                style = "green" if is_rider_column else "white"
+
                 # Check if this position should be filled
                 if row_from_bottom < h:
                     # Below the top - always use full block
-                    line += self.FULL_BLOCK
+                    chart_text.append(self.FULL_BLOCK, style=style)
                 elif row_from_bottom == h:
                     # This is the top row - use slope-aware character
                     # Check previous column to see if we're coming from higher
@@ -91,36 +94,26 @@ class ElevationChart(Widget):
 
                     if prev_h > h:
                         # Coming down from previous column - use down-slope
-                        line += self.SLOPE_DOWN
+                        chart_text.append(self.SLOPE_DOWN, style=style)
                     elif next_h > h:
                         # Next column is higher - upward slope
-                        line += self.SLOPE_UP
+                        chart_text.append(self.SLOPE_UP, style=style)
                     else:
                         # Flat or going down to next
-                        line += self.SLOPE_FLAT
+                        chart_text.append(self.SLOPE_FLAT, style=style)
                 else:
                     # Above the elevation - empty
-                    line += " "
+                    chart_text.append(" ")
 
-            lines.append(line)
-
-        # Add rider marker above the elevation profile
-        if rider_x is not None and 0 <= rider_x < width:
-            # Find the top of the elevation at rider position
-            rider_height = normalized_heights[rider_x]
-            marker_row = chart_height - rider_height - 2  # Place 1 row above the elevation
-
-            if 0 <= marker_row < chart_height:
-                # Insert marker into the line
-                line = lines[marker_row]
-                lines[marker_row] = line[:rider_x] + self.RIDER_MARKER + line[rider_x + 1:]
+            # Add newline after each row (except the last)
+            if y < chart_height - 1:
+                chart_text.append("\n")
 
         # Add distance markers at the bottom
+        chart_text.append("\n")
         distance_line = self._create_distance_markers(width, self.route.distance_km)
-        lines.append(distance_line)
+        chart_text.append(distance_line, style="white")
 
-        # Join all lines with white color
-        chart_text = Text("\n".join(lines), style="white")
         return chart_text
 
     def _calculate_rider_position(self, width: int) -> int | None:
