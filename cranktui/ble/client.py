@@ -9,7 +9,12 @@ from bleak.exc import BleakError
 
 
 def debug_log(msg: str) -> None:
-    """Log debug message to cranktui-debug.log."""
+    """Log debug message to cranktui-debug.log if debug mode is enabled."""
+    from cranktui.app import DEBUG_MODE
+
+    if not DEBUG_MODE:
+        return
+
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
     with open("cranktui-debug.log", "a") as f:
         f.write(f"[{timestamp}] {msg}\n")

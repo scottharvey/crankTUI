@@ -1,5 +1,7 @@
 """Main application entry point."""
 
+import argparse
+
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
@@ -9,6 +11,9 @@ from cranktui.routes.route import Route
 from cranktui.routes.route_loader import create_demo_routes, load_all_routes
 from cranktui.screens.riding import RidingScreen
 from cranktui.screens.route_select import RouteSelectScreen
+
+# Global debug flag
+DEBUG_MODE = False
 
 
 class ConfirmBackScreen(ModalScreen[bool]):
@@ -141,6 +146,19 @@ class CrankTUI(App):
 
 def main():
     """Run the application."""
+    global DEBUG_MODE
+
+    parser = argparse.ArgumentParser(description="crankTUI - Terminal trainer controller")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging to cranktui-debug.log")
+    args = parser.parse_args()
+
+    DEBUG_MODE = args.debug
+
+    if DEBUG_MODE:
+        # Clear the debug log at startup
+        with open("cranktui-debug.log", "w") as f:
+            f.write("=== crankTUI Debug Log ===\n")
+
     app = CrankTUI()
     app.run()
 
