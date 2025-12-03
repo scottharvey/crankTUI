@@ -43,6 +43,16 @@ class ConfirmBackScreen(ModalScreen[bool]):
     Button {
         margin: 0 1;
     }
+
+    Button.-primary {
+        background: transparent;
+        border: round white;
+        color: white;
+    }
+
+    Button.-primary:hover {
+        background: $surface;
+    }
     """
 
     def compose(self) -> ComposeResult:
