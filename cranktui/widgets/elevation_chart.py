@@ -16,7 +16,7 @@ class ElevationChart(Widget):
     # Braille characters for different top edge patterns
     FULL_BLOCK = "⣿"          # Full block for filled areas
     SLOPE_UP = "⣠"            # Up-slope: right side higher (dots 4,5,6,7,8)
-    SLOPE_DOWN = "⢄"          # Down-slope: left bottom filled (dots 3,4)
+    SLOPE_DOWN = "⢀"          # Down-slope: left high, right low (dot 4 only - left bottom)
     SLOPE_FLAT = "⣀"          # Flat top: bottom row (dots 4,8)
     RIDER_MARKER = "▲"
 
