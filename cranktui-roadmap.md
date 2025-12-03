@@ -51,7 +51,7 @@ Store routes in `~/.local/share/cranktui/routes/`
 
 ## Implementation Philosophy
 
-**Every step produces a working, runnable app.** 
+**Every step produces a working, runnable app.**
 
 You should be able to run `cranktui` after each step and see meaningful progress. We build incrementally, adding features one at a time.
 

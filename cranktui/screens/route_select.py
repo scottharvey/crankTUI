@@ -6,6 +6,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
 from cranktui.routes.route import Route
+from cranktui.screens.devices import DevicesScreen
 
 
 class RouteItem(Static):
@@ -30,6 +31,7 @@ class RouteSelectScreen(Screen):
         ("up", "navigate_up", "Up"),
         ("down", "navigate_down", "Down"),
         ("enter", "select_route", "Select"),
+        ("d", "show_devices", "Devices"),
     ]
 
     CSS = """
@@ -107,3 +109,7 @@ class RouteSelectScreen(Screen):
         """Select the currently focused route."""
         if self.route_items and 0 <= self.current_index < len(self.route_items):
             self.dismiss(self.route_items[self.current_index].route)
+
+    def action_show_devices(self) -> None:
+        """Show the devices screen."""
+        self.app.push_screen(DevicesScreen())

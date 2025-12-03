@@ -6,6 +6,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
 from cranktui.routes.route import Route
+from cranktui.screens.devices import DevicesScreen
 from cranktui.simulation.simulator import DemoSimulator
 from cranktui.widgets.elevation_chart import ElevationChart
 from cranktui.widgets.stats_panel import StatsPanel
@@ -17,6 +18,7 @@ class RidingScreen(Screen):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("escape", "request_back", "Back"),
+        ("d", "show_devices", "Devices"),
     ]
 
     CSS = """
@@ -77,3 +79,7 @@ class RidingScreen(Screen):
     def action_request_back(self) -> None:
         """Request to go back - will trigger confirmation in main app."""
         self.dismiss()
+
+    def action_show_devices(self) -> None:
+        """Show the devices screen."""
+        self.app.push_screen(DevicesScreen())
