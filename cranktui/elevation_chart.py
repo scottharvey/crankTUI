@@ -1,12 +1,12 @@
-"""Elevation chart visualization using braille characters."""
+"""Elevation chart visualization using block characters."""
 
+from rich.console import RenderableType
+from rich.text import Text
 from textual.widget import Widget
-from rich.segment import Segment
-from rich.style import Style
 
 
 class ElevationChart(Widget):
-    """Widget that renders an elevation profile using braille characters."""
+    """Widget that renders an elevation profile using block characters."""
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -19,13 +19,13 @@ class ElevationChart(Widget):
             110, 108, 107, 106, 105, 104, 103, 102, 101, 100,
         ]
 
-    def render_line(self, y: int) -> list[Segment]:
-        """Render a single line of the elevation chart."""
+    def render(self) -> RenderableType:
+        """Render the elevation chart."""
         width = self.size.width
         height = self.size.height
 
         if width == 0 or height == 0:
-            return []
+            return Text("")
 
         # Map elevation data to available width
         elevations = self._resample_to_width(width)
@@ -38,18 +38,24 @@ class ElevationChart(Widget):
         if elev_range == 0:
             elev_range = 1
 
-        # Calculate which elevations should be filled at this y position
-        # (y=0 is top of widget, so we need to invert)
-        threshold = max_elev - (y / height) * elev_range
+        # Build the chart from top to bottom
+        lines = []
+        for y in range(height):
+            # Calculate threshold for this row (y=0 is top)
+            threshold = max_elev - (y / height) * elev_range
 
-        segments = []
-        for elev in elevations:
-            if elev >= threshold:
-                segments.append(Segment("█", Style(color="green")))
-            else:
-                segments.append(Segment(" "))
+            line = ""
+            for elev in elevations:
+                if elev >= threshold:
+                    line += "█"
+                else:
+                    line += " "
 
-        return segments
+            lines.append(line)
+
+        # Join all lines and apply green color
+        chart_text = Text("\n".join(lines), style="green")
+        return chart_text
 
     def _resample_to_width(self, width: int) -> list[float]:
         """Resample elevation data to fit the given width."""
@@ -60,7 +66,3 @@ class ElevationChart(Widget):
         # Downsample by taking evenly spaced points
         indices = [int(i * len(self.elevations) / width) for i in range(width)]
         return [self.elevations[i] for i in indices]
-
-    def render(self):
-        """Render the elevation chart."""
-        return self.render_line
