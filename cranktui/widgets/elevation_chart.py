@@ -2,10 +2,12 @@
 
 from rich.console import RenderableType
 from rich.text import Text
+from textual.reactive import reactive
 from textual.widget import Widget
 
 from cranktui.routes.resample import resample_route, get_elevation_range
 from cranktui.routes.route import Route
+from cranktui.state.state import get_state
 
 
 class ElevationChart(Widget):
@@ -13,10 +15,24 @@ class ElevationChart(Widget):
 
     # Full braille block character
     FULL_BLOCK = "⣿"
+    RIDER_MARKER = "▲"
+
+    # Reactive property for current distance
+    current_distance_m: reactive[float] = reactive(0.0)
 
     def __init__(self, route: Route | None = None, **kwargs):
         super().__init__(**kwargs)
         self.route = route
+        self.state = get_state()
+
+    def on_mount(self) -> None:
+        """Handle mount - start update timer."""
+        self.set_interval(0.05, self.update_position)  # Update at 20 FPS
+
+    async def update_position(self) -> None:
+        """Fetch current distance from state."""
+        metrics = await self.state.get_metrics()
+        self.current_distance_m = metrics.distance_m
 
     def render(self) -> RenderableType:
         """Render the elevation chart."""
@@ -48,6 +64,9 @@ class ElevationChart(Widget):
             normalized = int(((point.elevation_m - min_elev) / elev_range) * chart_height)
             normalized_heights.append(normalized)
 
+        # Calculate rider position
+        rider_x = self._calculate_rider_position(width)
+
         # Build the chart from top to bottom
         lines = []
         for y in range(chart_height):
@@ -64,6 +83,17 @@ class ElevationChart(Widget):
 
             lines.append(line)
 
+        # Add rider marker above the elevation profile
+        if rider_x is not None and 0 <= rider_x < width:
+            # Find the top of the elevation at rider position
+            rider_height = normalized_heights[rider_x]
+            marker_row = chart_height - rider_height - 2  # Place 1 row above the elevation
+
+            if 0 <= marker_row < chart_height:
+                # Insert marker into the line
+                line = lines[marker_row]
+                lines[marker_row] = line[:rider_x] + self.RIDER_MARKER + line[rider_x + 1:]
+
         # Add distance markers at the bottom
         distance_line = self._create_distance_markers(width, self.route.distance_km)
         lines.append(distance_line)
@@ -71,6 +101,34 @@ class ElevationChart(Widget):
         # Join all lines with white color
         chart_text = Text("\n".join(lines), style="white")
         return chart_text
+
+    def _calculate_rider_position(self, width: int) -> int | None:
+        """Calculate the X position of the rider marker.
+
+        Args:
+            width: Chart width in characters
+
+        Returns:
+            X position (0 to width-1), or None if not applicable
+        """
+        if not self.route:
+            return None
+
+        total_distance_m = self.route.distance_km * 1000
+
+        if total_distance_m == 0:
+            return None
+
+        # Calculate position as fraction of total distance
+        progress = self.current_distance_m / total_distance_m
+
+        # Clamp to [0, 1]
+        progress = max(0.0, min(1.0, progress))
+
+        # Convert to X position
+        x = int(progress * (width - 1))
+
+        return x
 
     def _create_distance_markers(self, width: int, total_distance_km: float) -> str:
         """Create distance markers for the bottom of the chart."""
