@@ -5,7 +5,6 @@ from textual.containers import Container
 from textual.screen import ModalScreen
 from textual.widgets import Button, Header, Label, Static
 
-from cranktui.elevation_chart import ElevationChart
 from cranktui.routes.route import Route
 from cranktui.routes.route_loader import create_demo_routes, load_all_routes
 from cranktui.screens.riding import RidingScreen
@@ -72,21 +71,6 @@ class ConfirmBackScreen(ModalScreen[bool]):
             self.dismiss(False)
 
 
-class StatusPanel(Static):
-    """Widget to display current status information."""
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.border_title = "Status"
-
-    def compose(self) -> ComposeResult:
-        """Create child widgets."""
-        yield Static("Mode: DEMO")
-        yield Static("Power: 0W")
-        yield Static("Speed: 0 km/h")
-        yield Static("Cadence: 0 rpm")
-
-
 class CrankTUI(App):
     """A Textual app for KICKR trainer control."""
 
@@ -94,43 +78,14 @@ class CrankTUI(App):
         ("q", "quit", "Quit"),
     ]
 
-    CSS = """
-    Screen {
-        layout: vertical;
-    }
-
-    #main-container {
-        layout: horizontal;
-        height: 1fr;
-    }
-
-    #viz-panel {
-        width: 2fr;
-        border: round white;
-        content-align: center middle;
-    }
-
-    #status-panel {
-        width: 1fr;
-        border: round white;
-        padding: 1;
-    }
-
-    StatusPanel Static {
-        margin: 1 0;
-    }
-    """
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.selected_route: Route | None = None
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
-        yield Header()
-        with Container(id="main-container"):
-            yield ElevationChart(id="viz-panel")
-            yield StatusPanel(id="status-panel")
+        # Empty main screen - we always show screens on top
+        yield Static("")
 
     def on_mount(self) -> None:
         """Handle app mount - show route selection."""
