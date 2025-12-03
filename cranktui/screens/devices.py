@@ -323,6 +323,13 @@ class DevicesScreen(ModalScreen[None]):
                         item.refresh()
 
                     status_bar.update(f"Connected to {device.device_name}")
+
+                    # Start data stream for testing
+                    data_started = await ble_client.start_data_stream(self._handle_trainer_data)
+                    if data_started:
+                        status_bar.update(f"Connected - receiving data from {device.device_name}")
+                    else:
+                        status_bar.update(f"Connected to {device.device_name} (data stream failed)")
                 else:
                     status_bar.update(f"Failed to connect: {error}")
 
@@ -342,6 +349,20 @@ class DevicesScreen(ModalScreen[None]):
     def action_close_modal(self) -> None:
         """Close the devices screen."""
         self.dismiss()
+
+    def _handle_trainer_data(self, data: dict) -> None:
+        """Handle incoming trainer data.
+
+        Args:
+            data: Dictionary with power_w, cadence_rpm, speed_kmh, distance_m
+        """
+        # For now, just update the status bar with the data
+        status_bar = self.query_one("#status-bar", Label)
+        status_bar.update(
+            f"Power: {data['power_w']:.0f}W | "
+            f"Cadence: {data['cadence_rpm']:.0f}rpm | "
+            f"Speed: {data['speed_kmh']:.1f}km/h"
+        )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button press."""
