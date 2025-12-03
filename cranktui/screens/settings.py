@@ -14,6 +14,8 @@ class SettingsScreen(ModalScreen[None]):
     BINDINGS = [
         ("escape", "close_modal", "Close"),
         ("enter", "save_settings", "Save"),
+        ("left", "navigate_left", "Left"),
+        ("right", "navigate_right", "Right"),
     ]
 
     CSS = """
@@ -138,6 +140,14 @@ class SettingsScreen(ModalScreen[None]):
         """Close the settings screen without saving."""
         self.dismiss()
 
+    def action_navigate_left(self) -> None:
+        """Navigate to Save button (left side)."""
+        self.query_one("#save-btn", Button).focus()
+
+    def action_navigate_right(self) -> None:
+        """Navigate to Cancel button (right side)."""
+        self.query_one("#cancel-btn", Button).focus()
+
     def save_settings(self) -> None:
         """Validate and save settings."""
         rider_input = self.query_one("#rider-weight-input", Input)
@@ -163,12 +173,8 @@ class SettingsScreen(ModalScreen[None]):
             set_rider_weight_kg(rider_weight)
             set_bike_weight_kg(bike_weight)
 
-            # Show success message
-            status_message.update("✓ Settings saved!")
-            status_message.styles.color = "green"
-
-            # Close modal after a brief delay
-            self.set_timer(0.5, self.dismiss)
+            # Dismiss immediately (no success message needed)
+            self.dismiss()
 
         except ValueError:
             status_message.update("Please enter valid numbers")
