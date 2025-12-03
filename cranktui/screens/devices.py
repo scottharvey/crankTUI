@@ -1,7 +1,7 @@
 """Devices screen for BLE device discovery and connection."""
 
 from textual.app import ComposeResult
-from textual.containers import Container, Horizontal, VerticalScroll
+from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Label, Static
 
@@ -23,8 +23,8 @@ class DeviceItem(Static):
     def render(self) -> str:
         """Render device information."""
         signal_strength = "●●●" if self.rssi > -60 else "●●○" if self.rssi > -75 else "●○○"
-        status = "✓ " if self.is_connected else ""
-        return f"{status}{self.device_name}\n{self.device_address}  Signal: {signal_strength}"
+        status = "✓ " if self.is_connected else "  "
+        return f"{status}{self.device_name:30} {self.device_address:20} {signal_strength}"
 
 
 class DevicesScreen(ModalScreen[None]):
@@ -65,12 +65,6 @@ class DevicesScreen(ModalScreen[None]):
         width: 100%;
         height: 1fr;
         padding: 0 1;
-        overflow-y: auto;
-    }
-
-    #device-list:focus-within {
-        scrollbar-background: $surface;
-        scrollbar-color: white;
     }
 
     DeviceItem {
@@ -125,7 +119,7 @@ class DevicesScreen(ModalScreen[None]):
         """Create dialog widgets."""
         with Container(id="devices-dialog"):
             yield Label("BLE Devices", id="header")
-            with VerticalScroll(id="device-list"):
+            with Vertical(id="device-list"):
                 # Mock devices for now
                 yield DeviceItem("KICKR SNAP 12345", "AA:BB:CC:DD:EE:FF", -55)
                 yield DeviceItem("KICKR CORE 67890", "11:22:33:44:55:66", -70)
@@ -165,9 +159,6 @@ class DevicesScreen(ModalScreen[None]):
         elif self.device_items and self.current_index > 0:
             self.current_index -= 1
             self.device_items[self.current_index].focus()
-            # Scroll to keep focused item visible
-            self.device_items[self.current_index].scroll_visible()
-        return True  # Prevent default scroll behavior
 
     def action_navigate_down(self) -> None:
         """Navigate to the next device."""
@@ -175,9 +166,6 @@ class DevicesScreen(ModalScreen[None]):
             if self.device_items and self.current_index < len(self.device_items) - 1:
                 self.current_index += 1
                 self.device_items[self.current_index].focus()
-                # Scroll to keep focused item visible
-                self.device_items[self.current_index].scroll_visible()
-        return True  # Prevent default scroll behavior
 
     def action_navigate_left(self) -> None:
         """Navigate left between buttons."""
