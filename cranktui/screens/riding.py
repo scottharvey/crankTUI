@@ -6,6 +6,7 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
 from cranktui.routes.route import Route
+from cranktui.simulation.simulator import DemoSimulator
 from cranktui.widgets.elevation_chart import ElevationChart
 from cranktui.widgets.stats_panel import StatsPanel
 
@@ -50,6 +51,7 @@ class RidingScreen(Screen):
     def __init__(self, route: Route, **kwargs):
         super().__init__(**kwargs)
         self.route = route
+        self.simulator = DemoSimulator(route)
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -63,6 +65,14 @@ class RidingScreen(Screen):
                 )
                 yield StatsPanel()
         yield Footer()
+
+    async def on_mount(self) -> None:
+        """Handle mount - start simulation."""
+        await self.simulator.start()
+
+    async def on_unmount(self) -> None:
+        """Handle unmount - stop simulation."""
+        await self.simulator.stop()
 
     def action_request_back(self) -> None:
         """Request to go back - will trigger confirmation in main app."""
