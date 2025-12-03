@@ -152,7 +152,7 @@ class CrankTUI(App):
             # Show the riding screen
             self.push_screen(RidingScreen(route), self.on_riding_complete)
 
-    def on_riding_complete(self) -> None:
+    def on_riding_complete(self, result) -> None:
         """Handle when riding screen is dismissed."""
         # Show confirmation dialog
         self.push_screen(ConfirmBackScreen(), self.handle_confirm_back)
