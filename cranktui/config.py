@@ -59,3 +59,11 @@ def save_last_device(address: str, name: str) -> None:
     config["last_device_address"] = address
     config["last_device_name"] = name
     save_config(config)
+
+
+def clear_last_device() -> None:
+    """Clear the saved last device."""
+    config = load_config()
+    config.pop("last_device_address", None)
+    config.pop("last_device_name", None)
+    save_config(config)

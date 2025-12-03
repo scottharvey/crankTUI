@@ -1,6 +1,7 @@
 """Shared state container for live metrics."""
 
 import asyncio
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -35,6 +36,7 @@ class RideState:
         self._metrics = RideMetrics()
         self._lock = asyncio.Lock()
         self._ble_client: "BLEClient | None" = None
+        self._last_update_time: float | None = None
 
     async def get_metrics(self) -> RideMetrics:
         """Get a copy of current metrics."""
@@ -56,18 +58,40 @@ class RideState:
     async def update_metrics(self, **kwargs) -> None:
         """Update one or more metrics.
 
+        Automatically calculates distance by integrating speed over time.
+
         Args:
             **kwargs: Metric name and value pairs to update
         """
         async with self._lock:
+            current_time = time.time()
+
+            # Calculate distance from speed if speed is being updated
+            if "speed_kmh" in kwargs and self._last_update_time is not None:
+                time_delta_s = current_time - self._last_update_time
+                speed_ms = kwargs["speed_kmh"] / 3.6  # Convert km/h to m/s
+                distance_delta = speed_ms * time_delta_s
+                self._metrics.distance_m += distance_delta
+
+            # Update elapsed time if we have a start time
+            if self._metrics.start_time is not None:
+                self._metrics.elapsed_time_s = (
+                    datetime.now() - self._metrics.start_time
+                ).total_seconds()
+
+            # Update all provided metrics
             for key, value in kwargs.items():
                 if hasattr(self._metrics, key):
                     setattr(self._metrics, key, value)
+
+            # Track last update time for distance integration
+            self._last_update_time = current_time
 
     async def reset(self) -> None:
         """Reset all metrics to initial state."""
         async with self._lock:
             self._metrics = RideMetrics()
+            self._last_update_time = None
 
     async def get_ble_client(self) -> "BLEClient | None":
         """Get the BLE client instance."""

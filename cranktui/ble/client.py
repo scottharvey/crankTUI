@@ -48,6 +48,13 @@ class BLEClient:
         self._protocol: Optional[str] = None  # "ftms" or "wahoo"
         self._last_crank_revs: Optional[int] = None
         self._last_crank_time: Optional[int] = None  # in 1/1024 seconds
+        self._last_wheel_revs: Optional[int] = None
+        self._last_wheel_time: Optional[int] = None  # in 1/1024 seconds
+        self._wheel_circumference_m: float = 2.105  # Default ~700c wheel (adjustable later)
+        # Track latest values from different characteristics
+        self._latest_power_w: float = 0.0
+        self._latest_speed_kmh: float = 0.0
+        self._latest_cadence_rpm: float = 0.0
 
     @property
     def is_connected(self) -> bool:
@@ -325,8 +332,62 @@ class BLEClient:
         """Parse CSC Measurement characteristic (0x2A5B)."""
         try:
             debug_log(f"CSC Measurement data received ({len(data)} bytes): {data.hex()}")
-            # CSC Measurement can have wheel and/or crank data based on flags
-            # This might give us speed and cadence
+
+            if len(data) < 1:
+                return
+
+            # CSC Measurement format (Bluetooth SIG spec):
+            # Byte 0: Flags
+            #   Bit 0: Wheel Revolution Data Present
+            #   Bit 1: Crank Revolution Data Present
+            flags = data[0]
+            offset = 1
+
+            speed_kmh = 0.0
+
+            # Bit 0: Wheel Revolution Data Present
+            if flags & 0x01:
+                if len(data) >= offset + 6:
+                    cumulative_wheel_revs = int.from_bytes(data[offset:offset+4], byteorder='little')
+                    last_wheel_event_time = int.from_bytes(data[offset+4:offset+6], byteorder='little')
+
+                    # Calculate speed from wheel revolutions
+                    if self._last_wheel_revs is not None and self._last_wheel_time is not None:
+                        # Handle rollover (16-bit time, 32-bit revs)
+                        wheel_revs_delta = cumulative_wheel_revs - self._last_wheel_revs
+                        time_delta = last_wheel_event_time - self._last_wheel_time
+
+                        # Handle time rollover at 65536 (1/1024 seconds)
+                        if time_delta < 0:
+                            time_delta += 65536
+
+                        if time_delta > 0 and wheel_revs_delta > 0:
+                            # Time is in 1/1024 seconds
+                            time_delta_s = time_delta / 1024.0
+                            revs_per_sec = wheel_revs_delta / time_delta_s
+                            distance_per_sec = revs_per_sec * self._wheel_circumference_m
+                            speed_kmh = distance_per_sec * 3.6  # m/s to km/h
+
+                            debug_log(f"CSC Speed: {speed_kmh:.1f} km/h (revs_delta={wheel_revs_delta}, time_delta={time_delta})")
+
+                    self._last_wheel_revs = cumulative_wheel_revs
+                    self._last_wheel_time = last_wheel_event_time
+
+                    offset += 6
+
+            # Update latest speed and send combined data
+            if speed_kmh > 0:
+                self._latest_speed_kmh = speed_kmh
+
+                # Send combined data from all characteristics
+                parsed = {
+                    "power_w": self._latest_power_w,
+                    "cadence_rpm": self._latest_cadence_rpm,
+                    "speed_kmh": self._latest_speed_kmh,
+                    "distance_m": 0.0,
+                }
+                callback(parsed)
+
         except Exception as e:
             debug_log(f"Error parsing CSC measurement data: {e}")
 
@@ -369,10 +430,21 @@ class BLEClient:
 
             debug_log(f"Cycling Power: flags=0x{flags:04x}, power={power}W, cadence={cadence:.1f}RPM")
 
+            # Update latest power and send combined data
+            self._latest_power_w = float(power)
+
+            # If we don't have speed from CSC, estimate from power (very rough)
+            # This is temporary until we implement proper physics-based speed calculation
+            if self._latest_speed_kmh == 0.0 and power > 0:
+                # Rough estimation: ~20W per km/h at moderate effort
+                self._latest_speed_kmh = power / 20.0
+                debug_log(f"Estimating speed from power: {self._latest_speed_kmh:.1f} km/h")
+
+            # Send combined data from all characteristics
             parsed = {
-                "power_w": float(power),
-                "cadence_rpm": cadence,
-                "speed_kmh": 0.0,  # Not in this characteristic
+                "power_w": self._latest_power_w,
+                "cadence_rpm": self._latest_cadence_rpm,
+                "speed_kmh": self._latest_speed_kmh,
                 "distance_m": 0.0,
             }
 

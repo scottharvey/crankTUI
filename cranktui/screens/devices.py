@@ -8,7 +8,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Label, Static
 
 from cranktui.ble.scanner import scan_for_devices
-from cranktui.config import save_last_device
+from cranktui.config import clear_last_device, save_last_device
 from cranktui.state.state import get_state
 
 
@@ -299,6 +299,7 @@ class DevicesScreen(ModalScreen[None]):
                 if ble_client:
                     await ble_client.disconnect()
                     await self.state.update_ble_client(None)
+                    clear_last_device()  # Clear saved device so it won't auto-reconnect
                     device.is_connected = False
                     device.refresh()
                     status_bar.update(f"Disconnected from {device.device_name}")

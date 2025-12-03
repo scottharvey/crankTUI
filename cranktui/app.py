@@ -69,8 +69,8 @@ class ConfirmBackScreen(ModalScreen[bool]):
         with Container(id="dialog"):
             yield Label("Return to route selection?", id="question")
             with Horizontal(id="buttons"):
-                yield Button("Yes", id="yes")
                 yield Button("No", id="no")
+                yield Button("Yes", id="yes")
 
     def action_navigate_left(self) -> None:
         """Navigate to Yes button."""
