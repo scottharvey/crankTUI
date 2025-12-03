@@ -69,7 +69,7 @@ class DevicesScreen(ModalScreen[None]):
 
     DeviceItem {
         margin: 0;
-        padding: 1;
+        padding: 0 1;
         background: transparent;
         border: round $surface;
     }
