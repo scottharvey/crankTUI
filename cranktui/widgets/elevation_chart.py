@@ -64,24 +64,16 @@ class ElevationChart(Widget):
             pixel_h = ((point.elevation_m - min_elev) / elev_range) * pixel_height
             normalized_heights.append(pixel_h)
 
-        # Create a 2D grid for the line
+        # Create a 2D grid for the filled area
         grid = [[False] * (width * 2) for _ in range(chart_height * 4)]
 
-        # Draw the elevation line (just the outline, not filled)
+        # Draw the elevation profile by filling below the line
         for x in range(len(normalized_heights)):
-            h = int(round(normalized_heights[x]))
-            if 0 <= h < len(grid):
-                grid[h][x] = True
-
-            # Draw line segments between points for smoothness
-            if x > 0:
-                prev_h = int(round(normalized_heights[x - 1]))
-                # Draw vertical line between previous and current height
-                y_start = min(h, prev_h)
-                y_end = max(h, prev_h)
-                for y in range(y_start, y_end + 1):
-                    if 0 <= y < len(grid):
-                        grid[y][x] = True
+            h = normalized_heights[x]
+            # Fill from bottom (0) up to the elevation height
+            for y in range(int(h) + 1):
+                if y < len(grid):
+                    grid[y][x] = True
 
         # Convert grid to braille characters
         lines = []
