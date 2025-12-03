@@ -8,6 +8,7 @@ from textual.widgets import Button, Header, Label, Static
 from cranktui.elevation_chart import ElevationChart
 from cranktui.routes.route import Route
 from cranktui.routes.route_loader import create_demo_routes, load_all_routes
+from cranktui.screens.riding import RidingScreen
 from cranktui.screens.route_select import RouteSelectScreen
 
 
@@ -91,7 +92,6 @@ class CrankTUI(App):
 
     BINDINGS = [
         ("q", "quit", "Quit"),
-        ("escape", "confirm_back", "Back"),
     ]
 
     CSS = """
@@ -149,13 +149,14 @@ class CrankTUI(App):
         """Handle route selection."""
         if route:
             self.selected_route = route
-            self.notify(f"Selected route: {route.name}")
+            # Show the riding screen
+            self.push_screen(RidingScreen(route), self.on_riding_complete)
 
-    def action_confirm_back(self) -> None:
-        """Show confirmation dialog before going back to route selection."""
-        # Only show dialog if we have a selected route
-        if self.selected_route:
-            self.push_screen(ConfirmBackScreen(), self.handle_confirm_back)
+    def on_riding_complete(self) -> None:
+        """Handle when riding screen is dismissed."""
+        # Show confirmation dialog
+        self.push_screen(ConfirmBackScreen(), self.handle_confirm_back)
+
 
     def handle_confirm_back(self, confirmed: bool) -> None:
         """Handle the confirmation result."""
