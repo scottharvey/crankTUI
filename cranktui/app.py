@@ -14,8 +14,9 @@ from cranktui.screens.riding import RidingScreen
 from cranktui.screens.route_select import RouteSelectScreen
 from cranktui.state.state import get_state
 
-# Global debug flag
+# Global flags
 DEBUG_MODE = False
+DEMO_MODE = False
 
 
 class ConfirmBackScreen(ModalScreen[bool]):
@@ -110,8 +111,9 @@ class CrankTUI(App):
         # Ensure demo routes exist
         create_demo_routes()
 
-        # Try to auto-reconnect to last device
-        self.run_worker(self.auto_reconnect_device())
+        # Try to auto-reconnect to last device (unless in demo mode)
+        if not DEMO_MODE:
+            self.run_worker(self.auto_reconnect_device())
 
         # Load routes and show selection screen
         routes = load_all_routes()
@@ -202,13 +204,15 @@ class CrankTUI(App):
 
 def main():
     """Run the application."""
-    global DEBUG_MODE
+    global DEBUG_MODE, DEMO_MODE
 
     parser = argparse.ArgumentParser(description="crankTUI - Terminal trainer controller")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging to cranktui-debug.log")
+    parser.add_argument("--demo", action="store_true", help="Run in demo mode with simulated data (no BLE required)")
     args = parser.parse_args()
 
     DEBUG_MODE = args.debug
+    DEMO_MODE = args.demo
 
     if DEBUG_MODE:
         # Clear the debug log at startup

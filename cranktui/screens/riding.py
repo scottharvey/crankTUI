@@ -72,16 +72,17 @@ class RidingScreen(Screen):
         yield Footer()
 
     async def on_mount(self) -> None:
-        """Handle mount - start simulation only if no BLE connection."""
+        """Handle mount - start simulation only if in demo mode."""
         from datetime import datetime
+        from cranktui.app import DEMO_MODE
 
         ble_client = await self.state.get_ble_client()
 
         # Set start time for the ride
         await self.state.update_metrics(start_time=datetime.now())
 
-        # Only start demo simulator if no BLE device connected
-        if not ble_client or not ble_client.is_connected:
+        # Start demo simulator if --demo flag was passed OR no BLE device connected
+        if DEMO_MODE or not ble_client or not ble_client.is_connected:
             await self.state.update_metrics(mode="DEMO")
             await self.simulator.start()
         else:
@@ -109,6 +110,13 @@ class RidingScreen(Screen):
 
     async def _toggle_mode(self) -> None:
         """Async toggle mode implementation."""
+        from cranktui.app import DEMO_MODE
+
+        # Can't toggle if --demo flag was passed
+        if DEMO_MODE:
+            self.notify("Started with --demo flag, cannot switch to LIVE mode")
+            return
+
         metrics = await self.state.get_metrics()
         ble_client = await self.state.get_ble_client()
 
@@ -120,7 +128,7 @@ class RidingScreen(Screen):
                 await self.state.update_metrics(mode="LIVE")
                 self.notify("Switched to LIVE mode")
             else:
-                self.notify("No device connected - staying in DEMO mode")
+                self.notify("No device connected - cannot switch to LIVE mode")
         else:
             # Switch back to DEMO mode
             await self.state.update_metrics(mode="DEMO")
