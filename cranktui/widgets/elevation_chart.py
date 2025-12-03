@@ -84,20 +84,19 @@ class ElevationChart(Widget):
                     line += self.FULL_BLOCK
                 elif row_from_bottom == h:
                     # This is the top row - use slope-aware character
-                    # Determine slope to next column
-                    if x < len(normalized_heights) - 1:
-                        next_h = normalized_heights[x + 1]
-                        if next_h > h:
-                            # Next column is higher - upward slope
-                            line += self.SLOPE_UP
-                        elif next_h < h:
-                            # Next column is lower - downward slope
-                            line += self.SLOPE_DOWN
-                        else:
-                            # Same height - flat
-                            line += self.SLOPE_FLAT
+                    # Check previous column to see if we're coming from higher
+                    prev_h = normalized_heights[x - 1] if x > 0 else h
+                    # Check next column to see where we're going
+                    next_h = normalized_heights[x + 1] if x < len(normalized_heights) - 1 else h
+
+                    if prev_h > h:
+                        # Coming down from previous column - use down-slope
+                        line += self.SLOPE_DOWN
+                    elif next_h > h:
+                        # Next column is higher - upward slope
+                        line += self.SLOPE_UP
                     else:
-                        # Last column - use flat
+                        # Flat or going down to next
                         line += self.SLOPE_FLAT
                 else:
                     # Above the elevation - empty
