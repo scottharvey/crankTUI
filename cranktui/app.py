@@ -123,6 +123,10 @@ class CrankTUI(App):
             routes = load_all_routes()
             if routes:
                 self.push_screen(RouteSelectScreen(routes), self.on_route_selected)
+        else:
+            # Return to riding screen
+            if self.selected_route:
+                self.push_screen(RidingScreen(self.selected_route), self.on_riding_complete)
 
 
 def main():
