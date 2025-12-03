@@ -1,7 +1,7 @@
 """Route selection screen."""
 
 from textual.app import ComposeResult
-from textual.containers import Container, VerticalScroll
+from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
@@ -27,8 +27,8 @@ class RouteSelectScreen(Screen):
     BINDINGS = [
         ("q", "quit", "Quit"),
         ("escape", "app.pop_screen", "Back"),
-        ("up", "focus_previous", "Up"),
-        ("down", "focus_next", "Down"),
+        ("up", "navigate_up", "Up"),
+        ("down", "navigate_down", "Down"),
         ("enter", "select_route", "Select"),
     ]
 
@@ -73,6 +73,7 @@ class RouteSelectScreen(Screen):
         super().__init__(**kwargs)
         self.routes = routes
         self.route_items: list[RouteItem] = []
+        self.current_index = 0
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -87,10 +88,22 @@ class RouteSelectScreen(Screen):
     def on_mount(self) -> None:
         """Focus first route when mounted."""
         if self.route_items:
-            self.route_items[0].focus()
+            self.current_index = 0
+            self.route_items[self.current_index].focus()
+
+    def action_navigate_up(self) -> None:
+        """Navigate to the previous route."""
+        if self.route_items and self.current_index > 0:
+            self.current_index -= 1
+            self.route_items[self.current_index].focus()
+
+    def action_navigate_down(self) -> None:
+        """Navigate to the next route."""
+        if self.route_items and self.current_index < len(self.route_items) - 1:
+            self.current_index += 1
+            self.route_items[self.current_index].focus()
 
     def action_select_route(self) -> None:
         """Select the currently focused route."""
-        focused = self.focused
-        if isinstance(focused, RouteItem):
-            self.dismiss(focused.route)
+        if self.route_items and 0 <= self.current_index < len(self.route_items):
+            self.dismiss(self.route_items[self.current_index].route)
