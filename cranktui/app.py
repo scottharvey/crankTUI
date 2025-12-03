@@ -14,6 +14,11 @@ from cranktui.screens.route_select import RouteSelectScreen
 class ConfirmBackScreen(ModalScreen[bool]):
     """Modal dialog to confirm going back to route selection."""
 
+    BINDINGS = [
+        ("up", "focus_previous", "Focus Previous"),
+        ("down", "focus_next", "Focus Next"),
+    ]
+
     CSS = """
     ConfirmBackScreen {
         align: center middle;
