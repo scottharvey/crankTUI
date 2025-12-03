@@ -360,7 +360,7 @@ cranktui
 
 ---
 
-### Step 12: ERG Mode Control
+<!-- ### Step 12: ERG Mode Control
 
 **Goal:** Manually set target power from keyboard.
 
@@ -381,7 +381,7 @@ cranktui
 cranktui
 ```
 
-**Result:** Press `3` to set 250W target. Trainer resistance increases. Press `]` to bump to 260W.
+**Result:** Press `3` to set 250W target. Trainer resistance increases. Press `]` to bump to 260W. -->
 
 ---
 
@@ -475,7 +475,6 @@ cranktui
 - Add session summary screen after ride:
   - Total distance, time, average power, elevation gain
   - Did you beat the ghost?
-- Add visual grade indicators: `▲▲▲` for steep climbs, `▼▼` for descents
 - Add power graph (small sparkline) in stats panel
 
 **Test:**

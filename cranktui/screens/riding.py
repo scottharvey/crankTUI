@@ -21,6 +21,10 @@ class RidingScreen(Screen):
         ("escape", "request_back", "Back"),
         ("d", "show_devices", "Devices"),
         ("m", "toggle_mode", "Toggle Mode"),
+        ("1", "test_resistance_low", "Test: Low Resistance"),
+        ("2", "test_resistance_med", "Test: Med Resistance"),
+        ("3", "test_resistance_high", "Test: High Resistance"),
+        ("e", "test_erg_mode", "Test: ERG 200W"),
     ]
 
     CSS = """
@@ -134,3 +138,47 @@ class RidingScreen(Screen):
             await self.state.update_metrics(mode="DEMO")
             await self.simulator.start()
             self.notify("Switched to DEMO mode")
+
+    def action_test_resistance_low(self) -> None:
+        """Test setting low resistance (20%)."""
+        self.run_worker(self._test_resistance(20))
+
+    def action_test_resistance_med(self) -> None:
+        """Test setting medium resistance (50%)."""
+        self.run_worker(self._test_resistance(50))
+
+    def action_test_resistance_high(self) -> None:
+        """Test setting high resistance (80%)."""
+        self.run_worker(self._test_resistance(80))
+
+    def action_test_erg_mode(self) -> None:
+        """Test setting ERG mode to 200W."""
+        self.run_worker(self._test_erg(200))
+
+    async def _test_resistance(self, level: int) -> None:
+        """Test resistance command."""
+        ble_client = await self.state.get_ble_client()
+        if not ble_client or not ble_client.is_connected:
+            self.notify("No device connected")
+            return
+
+        self.notify(f"Testing: Set resistance to {level}% (check debug log)")
+        success = await ble_client.set_resistance_level(level)
+        if success:
+            self.notify(f"Command sent! Did resistance change?")
+        else:
+            self.notify(f"Command failed")
+
+    async def _test_erg(self, power: int) -> None:
+        """Test ERG mode command."""
+        ble_client = await self.state.get_ble_client()
+        if not ble_client or not ble_client.is_connected:
+            self.notify("No device connected")
+            return
+
+        self.notify(f"Testing: ERG mode {power}W (check debug log)")
+        success = await ble_client.set_erg_mode(power)
+        if success:
+            self.notify(f"Command sent! Did trainer respond?")
+        else:
+            self.notify(f"Command failed")

@@ -231,12 +231,13 @@ class BLEClient:
             print(f"Failed to stop notifications: {e}")
             return False
 
-    async def write_characteristic(self, characteristic_uuid: str, data: bytes) -> bool:
+    async def write_characteristic(self, characteristic_uuid: str, data: bytes, response: bool = True) -> bool:
         """Write data to a characteristic.
 
         Args:
             characteristic_uuid: UUID of the characteristic
             data: Bytes to write
+            response: Whether to wait for response (default True)
 
         Returns:
             True if write successful
@@ -245,9 +246,12 @@ class BLEClient:
             return False
 
         try:
-            await self._client.write_gatt_char(characteristic_uuid, data)
+            debug_log(f"WRITE to {characteristic_uuid}: {data.hex()} (response={response})")
+            await self._client.write_gatt_char(characteristic_uuid, data, response=response)
+            debug_log(f"WRITE successful")
             return True
         except Exception as e:
+            debug_log(f"WRITE failed: {e}")
             print(f"Failed to write characteristic: {e}")
             return False
 
@@ -322,6 +326,56 @@ class BLEClient:
         """Parse FTMS Indoor Bike Data and call callback."""
         # TODO: Implement FTMS parser
         debug_log(f"FTMS data received: {data.hex()}")
+
+    async def set_resistance_level(self, level: int) -> bool:
+        """Set resistance level (0-100).
+
+        This is experimental - trying to reverse engineer Wahoo protocol.
+
+        Args:
+            level: Resistance level 0-100
+
+        Returns:
+            True if command sent successfully
+        """
+        if not self.is_connected or self._protocol != "wahoo":
+            return False
+
+        # Try different command formats to see what works
+        # Format 1: Simple level command
+        command1 = bytes([0x46, level & 0xFF])  # 0x46 = possible "set resistance" opcode
+
+        debug_log(f"=== EXPERIMENTAL: Trying to set resistance to {level}% ===")
+        debug_log(f"Trying command format 1: {command1.hex()}")
+
+        result = await self.write_characteristic(WAHOO_CONTROL_CHAR_UUID, command1, response=True)
+        return result
+
+    async def set_erg_mode(self, power_watts: int) -> bool:
+        """Set ERG mode with target power.
+
+        This is experimental - trying to reverse engineer Wahoo protocol.
+
+        Args:
+            power_watts: Target power in watts
+
+        Returns:
+            True if command sent successfully
+        """
+        if not self.is_connected or self._protocol != "wahoo":
+            return False
+
+        # Try ERG mode command format
+        # Power in little-endian uint16
+        power_low = power_watts & 0xFF
+        power_high = (power_watts >> 8) & 0xFF
+        command = bytes([0x42, power_low, power_high])  # 0x42 = possible "set ERG power" opcode
+
+        debug_log(f"=== EXPERIMENTAL: Trying to set ERG mode to {power_watts}W ===")
+        debug_log(f"Command: {command.hex()}")
+
+        result = await self.write_characteristic(WAHOO_CONTROL_CHAR_UUID, command, response=True)
+        return result
 
     def _handle_wahoo_control_data(self, data: bytes, callback) -> None:
         """Parse Wahoo control characteristic data."""
