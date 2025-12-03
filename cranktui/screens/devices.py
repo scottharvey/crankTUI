@@ -1,5 +1,7 @@
 """Devices screen for BLE device discovery and connection."""
 
+import asyncio
+
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
@@ -89,7 +91,7 @@ class DevicesScreen(ModalScreen[None]):
 
     #status-bar {
         width: 100%;
-        height: auto;
+        height: 3;
         padding: 1;
         text-align: center;
         border-top: solid white;
