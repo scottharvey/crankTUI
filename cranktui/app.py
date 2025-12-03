@@ -17,6 +17,8 @@ class ConfirmBackScreen(ModalScreen[bool]):
     BINDINGS = [
         ("up", "focus_previous", "Focus Previous"),
         ("down", "focus_next", "Focus Next"),
+        ("left", "focus_previous", "Focus Previous"),
+        ("right", "focus_next", "Focus Next"),
     ]
 
     CSS = """
