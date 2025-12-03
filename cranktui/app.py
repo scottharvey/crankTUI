@@ -1,7 +1,7 @@
 """Main application entry point."""
 
 from textual.app import App, ComposeResult
-from textual.containers import Container
+from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Button, Header, Label, Static
 
@@ -15,10 +15,8 @@ class ConfirmBackScreen(ModalScreen[bool]):
     """Modal dialog to confirm going back to route selection."""
 
     BINDINGS = [
-        ("up", "navigate_buttons", "Navigate"),
-        ("down", "navigate_buttons", "Navigate"),
-        ("left", "navigate_buttons", "Navigate"),
-        ("right", "navigate_buttons", "Navigate"),
+        ("left", "navigate_left", "Left"),
+        ("right", "navigate_right", "Right"),
     ]
 
     CSS = """
@@ -50,7 +48,7 @@ class ConfirmBackScreen(ModalScreen[bool]):
     Button {
         margin: 0 1;
         background: transparent;
-        border: none;
+        border: round $surface;
         color: white;
     }
 
@@ -63,19 +61,17 @@ class ConfirmBackScreen(ModalScreen[bool]):
         """Create dialog widgets."""
         with Container(id="dialog"):
             yield Label("Return to route selection?", id="question")
-            with Container(id="buttons"):
+            with Horizontal(id="buttons"):
                 yield Button("Yes", id="yes")
                 yield Button("No", id="no")
 
-    def action_navigate_buttons(self) -> None:
-        """Toggle focus between buttons."""
-        buttons = self.query(Button)
-        if len(buttons) == 2:
-            # Get currently focused button
-            if self.query_one("#yes", Button).has_focus:
-                self.query_one("#no", Button).focus()
-            else:
-                self.query_one("#yes", Button).focus()
+    def action_navigate_left(self) -> None:
+        """Navigate to Yes button."""
+        self.query_one("#yes", Button).focus()
+
+    def action_navigate_right(self) -> None:
+        """Navigate to No button."""
+        self.query_one("#no", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button press."""
