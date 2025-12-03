@@ -1,4 +1,4 @@
-"""Elevation chart visualization using block characters."""
+"""Elevation chart visualization using braille characters."""
 
 from rich.console import RenderableType
 from rich.text import Text
@@ -6,7 +6,17 @@ from textual.widget import Widget
 
 
 class ElevationChart(Widget):
-    """Widget that renders an elevation profile using block characters."""
+    """Widget that renders an elevation profile using braille characters."""
+
+    # Braille patterns for different fill levels (0-4 dots vertical)
+    # Unicode braille patterns use dots 1-8, we use dots on the left column (1,2,3,4)
+    BRAILLE_LEVELS = [
+        " ",      # 0 dots - empty
+        "⠈",      # 1 dot  - top
+        "⠘",      # 2 dots - top + middle-top
+        "⠸",      # 3 dots - top + middle-top + middle-bottom
+        "⣸",      # 4 dots - all dots (filled)
+    ]
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -20,7 +30,7 @@ class ElevationChart(Widget):
         ]
 
     def render(self) -> RenderableType:
-        """Render the elevation chart."""
+        """Render the elevation chart using braille characters."""
         width = self.size.width
         height = self.size.height
 
@@ -30,7 +40,7 @@ class ElevationChart(Widget):
         # Map elevation data to available width
         elevations = self._resample_to_width(width)
 
-        # Normalize elevations to fit height
+        # Normalize elevations to fit height (multiply by 4 for braille resolution)
         min_elev = min(elevations)
         max_elev = max(elevations)
         elev_range = max_elev - min_elev
@@ -38,23 +48,38 @@ class ElevationChart(Widget):
         if elev_range == 0:
             elev_range = 1
 
+        # Convert elevations to pixel heights (height * 4 for braille resolution)
+        pixel_height = height * 4
+        normalized_heights = []
+        for elev in elevations:
+            pixel_h = int(((elev - min_elev) / elev_range) * pixel_height)
+            normalized_heights.append(pixel_h)
+
         # Build the chart from top to bottom
         lines = []
         for y in range(height):
-            # Calculate threshold for this row (y=0 is top)
-            threshold = max_elev - (y / height) * elev_range
-
             line = ""
-            for elev in elevations:
-                if elev >= threshold:
-                    line += "█"
+            for x, pixel_h in enumerate(normalized_heights):
+                # Calculate which braille level to use for this position
+                # Each character row represents 4 vertical pixels
+                row_bottom = (height - y - 1) * 4
+                row_top = row_bottom + 4
+
+                if pixel_h >= row_top:
+                    # Fully filled
+                    line += self.BRAILLE_LEVELS[4]
+                elif pixel_h > row_bottom:
+                    # Partially filled
+                    dots = pixel_h - row_bottom
+                    line += self.BRAILLE_LEVELS[dots]
                 else:
-                    line += " "
+                    # Empty
+                    line += self.BRAILLE_LEVELS[0]
 
             lines.append(line)
 
-        # Join all lines and apply green color
-        chart_text = Text("\n".join(lines), style="green")
+        # Join all lines with white color
+        chart_text = Text("\n".join(lines), style="white")
         return chart_text
 
     def _resample_to_width(self, width: int) -> list[float]:

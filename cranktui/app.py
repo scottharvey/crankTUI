@@ -37,13 +37,13 @@ class CrankTUI(App):
 
     #viz-panel {
         width: 2fr;
-        border: solid green;
+        border: round white;
         content-align: center middle;
     }
 
     #status-panel {
         width: 1fr;
-        border: solid blue;
+        border: round white;
         padding: 1;
     }
 
