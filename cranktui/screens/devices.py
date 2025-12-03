@@ -5,6 +5,9 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Label, Static
 
+from cranktui.ble.scanner import scan_for_devices
+from cranktui.state.state import get_state
+
 
 class DeviceItem(Static):
     """A single device in the list."""
@@ -113,18 +116,16 @@ class DevicesScreen(ModalScreen[None]):
         self.device_items: list[DeviceItem] = []
         self.current_index = 0
         self.in_button_area = False
+        self.state = get_state()
+        self.is_scanning = False
 
     def compose(self) -> ComposeResult:
         """Create dialog widgets."""
         with Container(id="devices-dialog"):
             yield Label("BLE Devices", id="header")
             with Vertical(id="device-list"):
-                # Mock devices for now
-                yield DeviceItem("KICKR SNAP 12345", "AA:BB:CC:DD:EE:FF", -55)
-                yield DeviceItem("KICKR CORE 67890", "11:22:33:44:55:66", -70)
-                yield DeviceItem("Heart Rate Monitor", "AA:11:BB:22:CC:33", -80)
-                yield DeviceItem("KICKR CLIMB", "DD:EE:FF:00:11:22", -62)
-                yield DeviceItem("Wahoo CADENCE", "33:44:55:66:77:88", -78)
+                # Devices will be populated dynamically after scan
+                yield Static("Scanning for devices...", id="scanning-placeholder")
             yield Static("", id="status-bar")
             with Horizontal(id="buttons"):
                 yield Button("Refresh", id="refresh-btn")
@@ -132,21 +133,68 @@ class DevicesScreen(ModalScreen[None]):
         yield Footer()
 
     def on_mount(self) -> None:
-        """Handle mount."""
-        # Get all device items
-        self.device_items = list(self.query(DeviceItem))
+        """Handle mount - start BLE scan."""
+        # Start scanning immediately
+        self.scan_devices()
 
-        # Focus first device
-        if self.device_items:
-            self.current_index = 0
-            self.device_items[self.current_index].focus()
+    async def scan_devices(self) -> None:
+        """Scan for BLE devices and populate list."""
+        if self.is_scanning:
+            return
 
-        # Update status after a moment to simulate scanning
-        self.set_timer(1.0, self.update_scan_status)
+        self.is_scanning = True
+        status_bar = self.query_one("#status-bar", Static)
+        status_bar.update("Scanning for devices...")
 
-    def update_scan_status(self) -> None:
-        """Update the scanning status (no longer used)."""
-        pass
+        try:
+            # Perform BLE scan
+            devices = await scan_for_devices(timeout=5.0)
+
+            # Remove placeholder and old devices
+            device_list = self.query_one("#device-list", Vertical)
+            await device_list.remove_children()
+
+            # Populate with discovered devices
+            if devices:
+                for device in devices:
+                    # Check if this device is currently connected
+                    ble_client = await self.state.get_ble_client()
+                    is_connected = (
+                        ble_client is not None
+                        and ble_client.is_connected
+                        and ble_client.device_address == device.address
+                    )
+
+                    device_item = DeviceItem(
+                        device.name, device.address, device.rssi, is_connected
+                    )
+                    await device_list.mount(device_item)
+
+                # Update device items list
+                self.device_items = list(self.query(DeviceItem))
+
+                # Focus first device
+                if self.device_items:
+                    self.current_index = 0
+                    self.device_items[self.current_index].focus()
+
+                status_bar.update(f"Found {len(devices)} device(s)")
+            else:
+                # No devices found
+                no_devices = Static("No devices found. Make sure trainer is powered on.")
+                await device_list.mount(no_devices)
+                status_bar.update("No devices found")
+
+        except Exception as e:
+            # Handle scan errors
+            status_bar.update(f"Scan error: {str(e)}")
+            device_list = self.query_one("#device-list", Vertical)
+            await device_list.remove_children()
+            error_msg = Static(f"Error: {str(e)}")
+            await device_list.mount(error_msg)
+
+        finally:
+            self.is_scanning = False
 
     def action_navigate_up(self) -> None:
         """Navigate to the previous device or back to devices from buttons."""
@@ -185,21 +233,59 @@ class DevicesScreen(ModalScreen[None]):
 
         device = self.device_items[self.current_index]
 
-        # Toggle connection state
-        device.is_connected = not device.is_connected
-        device.refresh()
+        # Trigger async connection/disconnection
+        self.connect_device(device)
 
-        # Update status bar
+    async def connect_device(self, device: DeviceItem) -> None:
+        """Connect or disconnect from a device.
+
+        Args:
+            device: The device to connect/disconnect
+        """
         status_bar = self.query_one("#status-bar", Static)
-        if device.is_connected:
-            status_bar.update(f"Connected to {device.device_name}")
-        else:
-            status_bar.update(f"Disconnected from {device.device_name}")
+
+        try:
+            ble_client = await self.state.get_ble_client()
+
+            if device.is_connected:
+                # Disconnect
+                if ble_client:
+                    await ble_client.disconnect()
+                    await self.state.update_ble_client(None)
+                    device.is_connected = False
+                    device.refresh()
+                    status_bar.update(f"Disconnected from {device.device_name}")
+            else:
+                # Connect
+                if not ble_client:
+                    # Create new client
+                    from cranktui.ble.client import BLEClient
+
+                    ble_client = BLEClient()
+
+                # Try to connect
+                status_bar.update(f"Connecting to {device.device_name}...")
+                success = await ble_client.connect(device.device_address, device.device_name)
+
+                if success:
+                    # Store client in state
+                    await self.state.update_ble_client(ble_client)
+
+                    # Update all device items to reflect new connection state
+                    for item in self.device_items:
+                        item.is_connected = item.device_address == device.device_address
+                        item.refresh()
+
+                    status_bar.update(f"Connected to {device.device_name}")
+                else:
+                    status_bar.update(f"Failed to connect to {device.device_name}")
+
+        except Exception as e:
+            status_bar.update(f"Connection error: {str(e)}")
 
     def action_refresh(self) -> None:
         """Refresh device list."""
-        # In future, this will trigger actual BLE scan
-        pass
+        self.scan_devices()
 
     def action_focus_buttons(self) -> None:
         """Focus the first button."""

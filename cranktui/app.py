@@ -26,7 +26,7 @@ class ConfirmBackScreen(ModalScreen[bool]):
 
     #dialog {
         width: 50;
-        height: 11;
+        height: 9;
         border: round white;
         background: $surface;
         padding: 1 2;

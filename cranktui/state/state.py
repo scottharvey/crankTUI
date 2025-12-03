@@ -3,6 +3,10 @@
 import asyncio
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from cranktui.ble.client import BLEClient
 
 
 @dataclass
@@ -30,6 +34,7 @@ class RideState:
     def __init__(self):
         self._metrics = RideMetrics()
         self._lock = asyncio.Lock()
+        self._ble_client: "BLEClient | None" = None
 
     async def get_metrics(self) -> RideMetrics:
         """Get a copy of current metrics."""
@@ -63,6 +68,20 @@ class RideState:
         """Reset all metrics to initial state."""
         async with self._lock:
             self._metrics = RideMetrics()
+
+    async def get_ble_client(self) -> "BLEClient | None":
+        """Get the BLE client instance."""
+        async with self._lock:
+            return self._ble_client
+
+    async def update_ble_client(self, client: "BLEClient | None") -> None:
+        """Update the BLE client instance.
+
+        Args:
+            client: BLE client instance or None to clear
+        """
+        async with self._lock:
+            self._ble_client = client
 
 
 # Global state instance
