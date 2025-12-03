@@ -4,6 +4,8 @@ from textual.app import App, ComposeResult
 from textual.containers import Container
 from textual.widgets import Header, Static
 
+from cranktui.elevation_chart import ElevationChart
+
 
 class StatusPanel(Static):
     """Widget to display current status information."""
@@ -54,7 +56,7 @@ class CrankTUI(App):
         """Create child widgets for the app."""
         yield Header()
         with Container(id="main-container"):
-            yield Static("[Visualization will go here]", id="viz-panel")
+            yield ElevationChart(id="viz-panel")
             yield StatusPanel(id="status-panel")
 
 
