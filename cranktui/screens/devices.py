@@ -144,11 +144,20 @@ class DevicesScreen(ModalScreen[None]):
 
         self.is_scanning = True
         status_bar = self.query_one("#status-bar", Static)
-        status_bar.update("Scanning for devices...")
 
         try:
-            # Perform BLE scan
-            devices = await scan_for_devices(timeout=5.0)
+            # Start scan and countdown timer concurrently
+            scan_duration = 5
+            scan_task = asyncio.create_task(scan_for_devices(timeout=float(scan_duration)))
+
+            # Update countdown while scanning
+            for i in range(scan_duration, 0, -1):
+                status_bar.update(f"Scanning... {i}s remaining")
+                await asyncio.sleep(1.0)
+
+            # Wait for scan to complete
+            devices = await scan_task
+            status_bar.update("Scan complete")
 
             # Remove placeholder and old devices
             device_list = self.query_one("#device-list", Vertical)
@@ -181,9 +190,16 @@ class DevicesScreen(ModalScreen[None]):
                 status_bar.update(f"Found {len(devices)} device(s)")
             else:
                 # No devices found
-                no_devices = Static("No devices found. Make sure trainer is powered on.")
+                no_devices = Static(
+                    "No devices found.\n\n"
+                    "Make sure your trainer is:\n"
+                    "  • Powered on\n"
+                    "  • Not connected to another device\n"
+                    "  • Within Bluetooth range\n\n"
+                    "Press Refresh to scan again."
+                )
                 await device_list.mount(no_devices)
-                status_bar.update("No devices found")
+                status_bar.update("No devices found - scan complete")
 
         except Exception as e:
             # Handle scan errors
