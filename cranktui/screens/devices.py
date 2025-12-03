@@ -360,12 +360,28 @@ class DevicesScreen(ModalScreen[None]):
         Args:
             data: Dictionary with power_w, cadence_rpm, speed_kmh, distance_m
         """
-        # For now, just update the status bar with the data
+        # Update the status bar with the data
         status_bar = self.query_one("#status-bar", Label)
         status_bar.update(
             f"Power: {data['power_w']:.0f}W | "
             f"Cadence: {data['cadence_rpm']:.0f}rpm | "
             f"Speed: {data['speed_kmh']:.1f}km/h"
+        )
+
+        # Update global state asynchronously
+        self.run_worker(self._update_state(data))
+
+    async def _update_state(self, data: dict) -> None:
+        """Update global state with trainer data.
+
+        Args:
+            data: Dictionary with power_w, cadence_rpm, speed_kmh, distance_m
+        """
+        await self.state.update_metrics(
+            power_w=data['power_w'],
+            cadence_rpm=data['cadence_rpm'],
+            speed_kmh=data['speed_kmh'],
+            mode="LIVE"
         )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:

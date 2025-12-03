@@ -46,6 +46,8 @@ class BLEClient:
         self._device_address: Optional[str] = None
         self._device_name: Optional[str] = None
         self._protocol: Optional[str] = None  # "ftms" or "wahoo"
+        self._last_crank_revs: Optional[int] = None
+        self._last_crank_time: Optional[int] = None  # in 1/1024 seconds
 
     @property
     def is_connected(self) -> bool:
@@ -355,13 +357,17 @@ class BLEClient:
 
             # Bit 4: Crank Revolution Data Present
             if flags & 0x10:
-                if len(data) >= offset + 6:
+                if len(data) >= offset + 4:
                     cumulative_crank_revs = int.from_bytes(data[offset:offset+2], byteorder='little')
                     last_crank_time = int.from_bytes(data[offset+2:offset+4], byteorder='little')
-                    debug_log(f"Crank data: revs={cumulative_crank_revs}, time={last_crank_time}")
+
+                    # Note: KICKR SNAP doesn't actually measure cadence (no crank sensor)
+                    # This data is present but not meaningful for wheel-based trainers
+                    debug_log(f"Crank data present but ignored (KICKR SNAP has no crank sensor)")
+
                     offset += 4
 
-            debug_log(f"Cycling Power: flags=0x{flags:04x}, power={power}W")
+            debug_log(f"Cycling Power: flags=0x{flags:04x}, power={power}W, cadence={cadence:.1f}RPM")
 
             parsed = {
                 "power_w": float(power),

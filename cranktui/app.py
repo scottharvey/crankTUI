@@ -135,13 +135,41 @@ class CrankTUI(App):
 
             if success:
                 await self.state.update_ble_client(ble_client)
-                self.notify(f"Reconnected to {name}")
+
+                # Start data stream with state updater callback
+                data_started = await ble_client.start_data_stream(self._handle_trainer_data)
+                if data_started:
+                    self.notify(f"Reconnected to {name}")
+                else:
+                    self.notify(f"Reconnected to {name} (data stream failed)")
             else:
                 # Silently fail - user can manually connect if needed
                 pass
         except Exception:
             # Silently fail - user can manually connect if needed
             pass
+
+    def _handle_trainer_data(self, data: dict) -> None:
+        """Handle incoming trainer data from BLE.
+
+        Args:
+            data: Dictionary with power_w, cadence_rpm, speed_kmh, distance_m
+        """
+        # Update global state asynchronously
+        self.run_worker(self._update_state(data))
+
+    async def _update_state(self, data: dict) -> None:
+        """Update global state with trainer data.
+
+        Args:
+            data: Dictionary with power_w, cadence_rpm, speed_kmh, distance_m
+        """
+        await self.state.update_metrics(
+            power_w=data['power_w'],
+            cadence_rpm=data['cadence_rpm'],
+            speed_kmh=data['speed_kmh'],
+            mode="LIVE"
+        )
 
     def on_route_selected(self, route: Route | None) -> None:
         """Handle route selection."""
