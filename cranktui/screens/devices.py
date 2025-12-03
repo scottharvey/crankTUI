@@ -34,6 +34,8 @@ class DevicesScreen(ModalScreen[None]):
         ("escape", "close_modal", "Close"),
         ("up", "navigate_up", "Up"),
         ("down", "navigate_down", "Down"),
+        ("left", "navigate_left", "Left"),
+        ("right", "navigate_right", "Right"),
         ("space", "toggle_connection", "Connect/Disconnect"),
         ("tab", "focus_buttons", "Focus Buttons"),
     ]
@@ -63,6 +65,12 @@ class DevicesScreen(ModalScreen[None]):
         width: 100%;
         height: 1fr;
         padding: 0 1;
+        overflow-y: auto;
+    }
+
+    #device-list:focus-within {
+        scrollbar-background: $surface;
+        scrollbar-color: white;
     }
 
     DeviceItem {
@@ -111,6 +119,7 @@ class DevicesScreen(ModalScreen[None]):
         super().__init__(**kwargs)
         self.device_items: list[DeviceItem] = []
         self.current_index = 0
+        self.in_button_area = False
 
     def compose(self) -> ComposeResult:
         """Create dialog widgets."""
@@ -147,16 +156,34 @@ class DevicesScreen(ModalScreen[None]):
         pass
 
     def action_navigate_up(self) -> None:
-        """Navigate to the previous device."""
-        if self.device_items and self.current_index > 0:
+        """Navigate to the previous device or back to devices from buttons."""
+        if self.in_button_area:
+            # Move back to device list
+            self.in_button_area = False
+            if self.device_items:
+                self.device_items[self.current_index].focus()
+        elif self.device_items and self.current_index > 0:
             self.current_index -= 1
             self.device_items[self.current_index].focus()
 
     def action_navigate_down(self) -> None:
         """Navigate to the next device."""
-        if self.device_items and self.current_index < len(self.device_items) - 1:
-            self.current_index += 1
-            self.device_items[self.current_index].focus()
+        if not self.in_button_area:
+            if self.device_items and self.current_index < len(self.device_items) - 1:
+                self.current_index += 1
+                self.device_items[self.current_index].focus()
+
+    def action_navigate_left(self) -> None:
+        """Navigate left between buttons."""
+        if self.in_button_area:
+            refresh_btn = self.query_one("#refresh-btn", Button)
+            refresh_btn.focus()
+
+    def action_navigate_right(self) -> None:
+        """Navigate right between buttons."""
+        if self.in_button_area:
+            close_btn = self.query_one("#close-btn", Button)
+            close_btn.focus()
 
     def action_toggle_connection(self) -> None:
         """Toggle connection for the focused device."""
@@ -183,6 +210,7 @@ class DevicesScreen(ModalScreen[None]):
 
     def action_focus_buttons(self) -> None:
         """Focus the first button."""
+        self.in_button_area = True
         refresh_btn = self.query_one("#refresh-btn", Button)
         refresh_btn.focus()
 
