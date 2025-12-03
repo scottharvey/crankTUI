@@ -27,7 +27,8 @@ class DemoSimulator:
         self.running = True
         self.start_time = time.time()
 
-        # Initialize state
+        # Reset and initialize state
+        await self.state.reset()
         await self.state.update_metrics(
             mode="DEMO",
             start_time=datetime.now(),
