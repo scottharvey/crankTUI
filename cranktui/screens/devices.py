@@ -8,6 +8,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Footer, Label, Static
 
 from cranktui.ble.scanner import scan_for_devices
+from cranktui.config import save_last_device
 from cranktui.state.state import get_state
 
 
@@ -316,6 +317,9 @@ class DevicesScreen(ModalScreen[None]):
                 if success:
                     # Store client in state
                     await self.state.update_ble_client(ble_client)
+
+                    # Save as last connected device
+                    save_last_device(device.device_address, device.device_name)
 
                     # Update all device items to reflect new connection state
                     for item in self.device_items:

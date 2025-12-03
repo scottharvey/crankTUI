@@ -7,10 +7,12 @@ from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Button, Header, Label, Static
 
+from cranktui.config import get_last_device
 from cranktui.routes.route import Route
 from cranktui.routes.route_loader import create_demo_routes, load_all_routes
 from cranktui.screens.riding import RidingScreen
 from cranktui.screens.route_select import RouteSelectScreen
+from cranktui.state.state import get_state
 
 # Global debug flag
 DEBUG_MODE = False
@@ -96,6 +98,7 @@ class CrankTUI(App):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.selected_route: Route | None = None
+        self.state = get_state()
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
@@ -107,6 +110,9 @@ class CrankTUI(App):
         # Ensure demo routes exist
         create_demo_routes()
 
+        # Try to auto-reconnect to last device
+        self.run_worker(self.auto_reconnect_device())
+
         # Load routes and show selection screen
         routes = load_all_routes()
 
@@ -114,6 +120,28 @@ class CrankTUI(App):
             self.push_screen(RouteSelectScreen(routes), self.on_route_selected)
         else:
             self.notify("No routes found. Add route JSON files to ~/.local/share/cranktui/routes/")
+
+    async def auto_reconnect_device(self) -> None:
+        """Try to reconnect to the last connected device."""
+        from cranktui.ble.client import BLEClient
+
+        address, name = get_last_device()
+        if not address or not name:
+            return
+
+        try:
+            ble_client = BLEClient()
+            success, error = await ble_client.connect(address, name)
+
+            if success:
+                await self.state.update_ble_client(ble_client)
+                self.notify(f"Reconnected to {name}")
+            else:
+                # Silently fail - user can manually connect if needed
+                pass
+        except Exception:
+            # Silently fail - user can manually connect if needed
+            pass
 
     def on_route_selected(self, route: Route | None) -> None:
         """Handle route selection."""

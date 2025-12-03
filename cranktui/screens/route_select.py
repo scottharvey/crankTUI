@@ -1,12 +1,13 @@
 """Route selection screen."""
 
 from textual.app import ComposeResult
-from textual.containers import VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
 from cranktui.routes.route import Route
 from cranktui.screens.devices import DevicesScreen
+from cranktui.state.state import get_state
 
 
 class RouteItem(Static):
@@ -39,11 +40,52 @@ class RouteSelectScreen(Screen):
         layout: vertical;
     }
 
-    #route-container {
+    #main-container {
+        width: 100%;
         height: 1fr;
+    }
+
+    #routes-panel {
+        width: 70%;
+        height: 100%;
         border: round white;
         margin: 1;
+    }
+
+    #routes-panel-title {
+        text-style: bold;
+        text-align: center;
+        border-bottom: solid white;
         padding: 1;
+        margin: 0 1 1 1;
+    }
+
+    #routes-scroll {
+        width: 100%;
+        height: 1fr;
+        padding: 0 1;
+    }
+
+    #devices-panel {
+        width: 30%;
+        height: 100%;
+        border: round white;
+        margin: 1;
+    }
+
+    #devices-panel-title {
+        text-style: bold;
+        text-align: center;
+        border-bottom: solid white;
+        padding: 1;
+        margin: 0 1 1 1;
+    }
+
+    #device-status {
+        color: $text-muted;
+        padding: 1;
+        text-align: center;
+        height: auto;
     }
 
     RouteItem {
@@ -76,15 +118,22 @@ class RouteSelectScreen(Screen):
         self.routes = routes
         self.route_items: list[RouteItem] = []
         self.current_index = 0
+        self.state = get_state()
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
         yield Header()
-        with VerticalScroll(id="route-container"):
-            for route in self.routes:
-                item = RouteItem(route)
-                self.route_items.append(item)
-                yield item
+        with Horizontal(id="main-container"):
+            with Vertical(id="routes-panel"):
+                yield Static("Routes", id="routes-panel-title")
+                with VerticalScroll(id="routes-scroll"):
+                    for route in self.routes:
+                        item = RouteItem(route)
+                        self.route_items.append(item)
+                        yield item
+            with Vertical(id="devices-panel"):
+                yield Static("Devices", id="devices-panel-title")
+                yield Static("", id="device-status")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -92,6 +141,21 @@ class RouteSelectScreen(Screen):
         if self.route_items:
             self.current_index = 0
             self.route_items[self.current_index].focus()
+
+        # Update device status
+        self.set_interval(1.0, self.update_device_status)
+        self.update_device_status()
+
+    async def update_device_status(self) -> None:
+        """Update the device status display."""
+        ble_client = await self.state.get_ble_client()
+        status_widget = self.query_one("#device-status", Static)
+
+        if ble_client and ble_client.is_connected:
+            device_name = ble_client.device_name or "Unknown"
+            status_widget.update(f"✓ {device_name} Connected\n\n\nPress d to manage")
+        else:
+            status_widget.update("No devices connected\n\n\nPress d to connect")
 
     def action_navigate_up(self) -> None:
         """Navigate to the previous route."""
