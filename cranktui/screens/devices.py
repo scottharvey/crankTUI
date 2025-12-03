@@ -165,6 +165,9 @@ class DevicesScreen(ModalScreen[None]):
         elif self.device_items and self.current_index > 0:
             self.current_index -= 1
             self.device_items[self.current_index].focus()
+            # Scroll to keep focused item visible
+            self.device_items[self.current_index].scroll_visible()
+        return True  # Prevent default scroll behavior
 
     def action_navigate_down(self) -> None:
         """Navigate to the next device."""
@@ -172,6 +175,9 @@ class DevicesScreen(ModalScreen[None]):
             if self.device_items and self.current_index < len(self.device_items) - 1:
                 self.current_index += 1
                 self.device_items[self.current_index].focus()
+                # Scroll to keep focused item visible
+                self.device_items[self.current_index].scroll_visible()
+        return True  # Prevent default scroll behavior
 
     def action_navigate_left(self) -> None:
         """Navigate left between buttons."""
