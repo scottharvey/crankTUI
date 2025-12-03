@@ -74,12 +74,12 @@ class ConfirmBackScreen(ModalScreen[bool]):
                 yield Button("Yes", id="yes")
 
     def action_navigate_left(self) -> None:
-        """Navigate to Yes button."""
-        self.query_one("#yes", Button).focus()
+        """Navigate to No button (left side)."""
+        self.query_one("#no", Button).focus()
 
     def action_navigate_right(self) -> None:
-        """Navigate to No button."""
-        self.query_one("#no", Button).focus()
+        """Navigate to Yes button (right side)."""
+        self.query_one("#yes", Button).focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button press."""
