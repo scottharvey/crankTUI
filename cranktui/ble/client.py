@@ -1,10 +1,19 @@
 """BLE client for connecting to and communicating with trainers."""
 
 import asyncio
+from datetime import datetime
 from typing import Optional
 
 from bleak import BleakClient as BleakClientImpl
 from bleak.exc import BleakError
+
+
+def debug_log(msg: str) -> None:
+    """Log debug message to cranktui-debug.log."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    with open("cranktui-debug.log", "a") as f:
+        f.write(f"[{timestamp}] {msg}\n")
+        f.flush()
 
 
 # FTMS Service and Characteristic UUIDs
@@ -36,7 +45,7 @@ class BLEClient:
         """Get the address of the connected device."""
         return self._device_address
 
-    async def connect(self, address: str, name: str = "Unknown") -> bool:
+    async def connect(self, address: str, name: str = "Unknown") -> tuple[bool, str]:
         """Connect to a BLE device.
 
         Args:
@@ -44,53 +53,77 @@ class BLEClient:
             name: Device name (for display purposes)
 
         Returns:
-            True if connection successful, False otherwise
+            Tuple of (success, error_message)
         """
+        debug_log(f"=== Starting connection to {name} ({address}) ===")
         try:
             # Disconnect from any existing connection
             if self.is_connected:
+                debug_log("Disconnecting from existing connection")
                 await self.disconnect()
 
             # Create new client and connect
+            debug_log(f"Creating BleakClient for {address}")
             self._client = BleakClientImpl(address)
+
+            debug_log("Attempting to connect (timeout=10s)...")
             await self._client.connect(timeout=10.0)
 
             if not self._client.is_connected:
-                return False
+                debug_log("Connection failed - client reports not connected")
+                return False, "Connection failed"
+
+            debug_log("Connection successful!")
 
             # Store device info
             self._device_address = address
             self._device_name = name
 
+            # Wait a moment for services to populate
+            debug_log("Waiting 0.5s for services to populate...")
+            await asyncio.sleep(0.5)
+
             # Discover services to ensure FTMS is available
-            services = await self._client.get_services()
-            ftms_service = services.get_service(FTMS_SERVICE_UUID)
+            # In bleak, services are available via the services property
+            debug_log("Discovering services...")
+            ftms_service = None
+            available_services = []
+            for service in self._client.services:
+                available_services.append(service.uuid)
+                debug_log(f"  Found service: {service.uuid}")
+                if service.uuid.lower() == FTMS_SERVICE_UUID.lower():
+                    ftms_service = service
+                    debug_log(f"  ✓ FTMS service found!")
+
+            debug_log(f"Total services found: {len(available_services)}")
 
             if not ftms_service:
-                # No FTMS service found - disconnect
-                await self.disconnect()
-                return False
+                # No FTMS service found - but allow connection anyway for now
+                debug_log("FTMS service NOT found - continuing anyway")
+                debug_log("=== Connection complete (no FTMS) ===")
+                return True, ""
 
-            return True
+            debug_log("=== Connection complete and FTMS available ===")
+            return True, ""
 
         except BleakError as e:
-            print(f"BLE connection error: {e}")
+            debug_log(f"BleakError during connection: {str(e)}")
             if self._client:
                 try:
                     await self._client.disconnect()
                 except:
                     pass
                 self._client = None
-            return False
+            return False, f"BLE error: {str(e)}"
         except Exception as e:
-            print(f"Unexpected connection error: {e}")
+            debug_log(f"Unexpected error during connection: {type(e).__name__}: {str(e)}")
             if self._client:
                 try:
                     await self._client.disconnect()
                 except:
                     pass
                 self._client = None
-            return False
+            return False, f"Error: {str(e)}"
 
     async def disconnect(self) -> None:
         """Disconnect from the current device."""

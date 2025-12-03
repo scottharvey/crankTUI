@@ -91,10 +91,14 @@ class DevicesScreen(ModalScreen[None]):
 
     #status-bar {
         width: 100%;
-        height: 3;
-        padding: 1;
-        text-align: center;
+        height: auto;
+        min-height: 3;
+        padding: 1 2;
+        content-align: center middle;
         border-top: solid white;
+        border-bottom: solid white;
+        color: white;
+        text-style: bold;
     }
 
     Button {
@@ -128,7 +132,7 @@ class DevicesScreen(ModalScreen[None]):
             with Vertical(id="device-list"):
                 # Devices will be populated dynamically after scan
                 yield Static("Scanning for devices...", id="scanning-placeholder")
-            yield Static("", id="status-bar")
+            yield Label("Press SPACE on a device to connect", id="status-bar")
             with Horizontal(id="buttons"):
                 yield Button("Refresh", id="refresh-btn")
                 yield Button("Close", id="close-btn")
@@ -137,7 +141,7 @@ class DevicesScreen(ModalScreen[None]):
     def on_mount(self) -> None:
         """Handle mount - start BLE scan."""
         # Start scanning immediately
-        self.scan_devices()
+        self.run_worker(self.scan_devices())
 
     async def scan_devices(self) -> None:
         """Scan for BLE devices and populate list."""
@@ -145,9 +149,14 @@ class DevicesScreen(ModalScreen[None]):
             return
 
         self.is_scanning = True
-        status_bar = self.query_one("#status-bar", Static)
+        status_bar = self.query_one("#status-bar", Label)
+        device_list = self.query_one("#device-list", Vertical)
 
         try:
+            # Clear existing devices and show scanning placeholder
+            await device_list.remove_children()
+            await device_list.mount(Static("Scanning for devices...", id="scanning-placeholder"))
+
             # Start scan and countdown timer concurrently
             scan_duration = 5
             scan_task = asyncio.create_task(scan_for_devices(timeout=float(scan_duration)))
@@ -165,20 +174,30 @@ class DevicesScreen(ModalScreen[None]):
             device_list = self.query_one("#device-list", Vertical)
             await device_list.remove_children()
 
-            # Populate with discovered devices
-            if devices:
-                for device in devices:
-                    # Check if this device is currently connected
-                    ble_client = await self.state.get_ble_client()
-                    is_connected = (
-                        ble_client is not None
-                        and ble_client.is_connected
-                        and ble_client.device_address == device.address
-                    )
+            # Check if we have a connected device
+            ble_client = await self.state.get_ble_client()
+            connected_address = None
+            if ble_client is not None and ble_client.is_connected:
+                connected_address = ble_client.device_address
 
-                    device_item = DeviceItem(
-                        device.name, device.address, device.rssi, is_connected
-                    )
+            # Build list of devices to show (scan results + connected device if not in scan)
+            devices_to_show = []
+            scan_addresses = set()
+
+            # Add scanned devices
+            for device in devices:
+                scan_addresses.add(device.address)
+                is_connected = device.address == connected_address
+                devices_to_show.append((device.name, device.address, device.rssi, is_connected))
+
+            # If we have a connected device that wasn't in the scan, add it at the top
+            if connected_address and connected_address not in scan_addresses:
+                devices_to_show.insert(0, (ble_client.device_name or "Unknown", connected_address, -50, True))
+
+            # Populate with devices
+            if devices_to_show:
+                for name, address, rssi, is_connected in devices_to_show:
+                    device_item = DeviceItem(name, address, rssi, is_connected)
                     await device_list.mount(device_item)
 
                 # Update device items list
@@ -189,7 +208,7 @@ class DevicesScreen(ModalScreen[None]):
                     self.current_index = 0
                     self.device_items[self.current_index].focus()
 
-                status_bar.update(f"Found {len(devices)} device(s)")
+                status_bar.update(f"Found {len(devices_to_show)} device(s)")
             else:
                 # No devices found
                 no_devices = Static(
@@ -246,13 +265,22 @@ class DevicesScreen(ModalScreen[None]):
 
     def action_toggle_connection(self) -> None:
         """Toggle connection for the focused device."""
+        # Don't toggle connection if we're in the button area
+        if self.in_button_area:
+            return
+
+        status_bar = self.query_one("#status-bar", Label)
+        status_bar.update("Space pressed!")
+
         if not self.device_items or not (0 <= self.current_index < len(self.device_items)):
+            status_bar.update("No device selected")
             return
 
         device = self.device_items[self.current_index]
+        status_bar.update(f"Trying to connect to {device.device_name}")
 
         # Trigger async connection/disconnection
-        self.connect_device(device)
+        self.run_worker(self.connect_device(device))
 
     async def connect_device(self, device: DeviceItem) -> None:
         """Connect or disconnect from a device.
@@ -260,7 +288,7 @@ class DevicesScreen(ModalScreen[None]):
         Args:
             device: The device to connect/disconnect
         """
-        status_bar = self.query_one("#status-bar", Static)
+        status_bar = self.query_one("#status-bar", Label)
 
         try:
             ble_client = await self.state.get_ble_client()
@@ -283,7 +311,7 @@ class DevicesScreen(ModalScreen[None]):
 
                 # Try to connect
                 status_bar.update(f"Connecting to {device.device_name}...")
-                success = await ble_client.connect(device.device_address, device.device_name)
+                success, error = await ble_client.connect(device.device_address, device.device_name)
 
                 if success:
                     # Store client in state
@@ -296,14 +324,14 @@ class DevicesScreen(ModalScreen[None]):
 
                     status_bar.update(f"Connected to {device.device_name}")
                 else:
-                    status_bar.update(f"Failed to connect to {device.device_name}")
+                    status_bar.update(f"Failed to connect: {error}")
 
         except Exception as e:
             status_bar.update(f"Connection error: {str(e)}")
 
     def action_refresh(self) -> None:
         """Refresh device list."""
-        self.scan_devices()
+        self.run_worker(self.scan_devices())
 
     def action_focus_buttons(self) -> None:
         """Focus the first button."""
