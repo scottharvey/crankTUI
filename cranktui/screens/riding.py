@@ -10,6 +10,7 @@ from cranktui.screens.devices import DevicesScreen
 from cranktui.simulation.simulator import DemoSimulator
 from cranktui.state.state import get_state
 from cranktui.widgets.elevation_chart import ElevationChart
+from cranktui.widgets.minimap import MinimapWidget
 from cranktui.widgets.stats_panel import StatsPanel
 
 
@@ -54,6 +55,13 @@ class RidingScreen(Screen):
         padding-bottom: 1;
         border-bottom: solid white;
     }
+
+    #minimap-panel {
+        height: 10;
+        margin-top: 1;
+        border: round white;
+        padding: 1;
+    }
     """
 
     def __init__(self, route: Route, **kwargs):
@@ -73,6 +81,7 @@ class RidingScreen(Screen):
                     id="route-info"
                 )
                 yield StatsPanel()
+                yield MinimapWidget(route=self.route, id="minimap-panel")
         yield Footer()
 
     async def on_mount(self) -> None:
