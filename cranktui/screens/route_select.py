@@ -52,7 +52,7 @@ class RouteSelectScreen(Screen):
     }
 
     RouteItem:focus {
-        border: solid white;
+        border: round white;
         background: $surface;
     }
 
