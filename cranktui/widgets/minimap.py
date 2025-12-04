@@ -72,6 +72,23 @@ class MinimapWidget(Widget):
         else:
             rider_x = 0
 
+        # Calculate start line position (first column of route)
+        route_start_distance_m = self.route.points[0].distance_m if self.route.points else 0
+        if total_distance_m > 0:
+            start_progress = route_start_distance_m / total_distance_m
+            start_x = int(start_progress * (width - 1))
+        else:
+            start_x = 0
+
+        # Calculate finish line position (actual end of route, not padded end)
+        # The route ends at route.distance_km * 1000, which should be at the last actual route point
+        route_end_distance_m = self.route.points[-1].distance_m if self.route.points else 0
+        if total_distance_m > 0:
+            finish_progress = route_end_distance_m / total_distance_m
+            finish_x = int(finish_progress * (width - 1))
+        else:
+            finish_x = width - 1
+
         # Build the chart from top to bottom using Rich Text for styling
         chart_text = Text()
 
@@ -80,9 +97,19 @@ class MinimapWidget(Widget):
                 # Calculate which row this is from bottom
                 row_from_bottom = chart_height - y - 1
 
-                # Determine if this is the rider's column
+                # Determine styling based on special columns
                 is_rider_column = (x == rider_x)
-                style = "green" if is_rider_column else "white"
+                is_start_column = (x == start_x)
+                is_finish_column = (x == finish_x)
+
+                if is_finish_column:
+                    style = "red"
+                elif is_rider_column:
+                    style = "green"
+                elif is_start_column:
+                    style = "dark_green"
+                else:
+                    style = "white"
 
                 # Check if this position should be filled
                 if row_from_bottom <= h:

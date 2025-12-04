@@ -2,6 +2,7 @@
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.message import Message
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
@@ -14,6 +15,12 @@ from cranktui.state.state import get_state
 class RouteItem(Static):
     """A widget for displaying a single route."""
 
+    class Selected(Message):
+        """Message sent when route item is selected."""
+        def __init__(self, route_item: "RouteItem") -> None:
+            self.route_item = route_item
+            super().__init__()
+
     def __init__(self, route: Route, index: int, **kwargs):
         super().__init__(**kwargs)
         self.route = route
@@ -23,6 +30,11 @@ class RouteItem(Static):
     def render(self) -> str:
         """Render the route information."""
         return f"{self.route.name}\n{self.route.description}\n{self.route.distance_km} km"
+
+    def on_click(self) -> None:
+        """Handle click on route item."""
+        # Post a message to parent screen to select this route
+        self.post_message(self.Selected(self))
 
 
 class RouteSelectScreen(Screen):
@@ -185,6 +197,13 @@ class RouteSelectScreen(Screen):
         if self.route_items and 0 <= self.current_index < len(self.route_items):
             selected_route = self.route_items[self.current_index].route
             self.dismiss(selected_route)
+
+    def on_route_item_selected(self, message: RouteItem.Selected) -> None:
+        """Handle route item being clicked."""
+        # Update current index to the clicked item
+        self.current_index = message.route_item.index
+        # Select the route
+        self.dismiss(message.route_item.route)
 
     def action_show_devices(self) -> None:
         """Show the devices screen."""

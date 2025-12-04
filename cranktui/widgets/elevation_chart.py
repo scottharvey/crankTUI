@@ -106,6 +106,24 @@ class ElevationChart(Widget):
         # Calculate rider position (always at 10% from left edge in scrolling view)
         rider_x = int(width * (VIEWPORT_BEHIND_M / VIEWPORT_TOTAL_M))
 
+        # Calculate start line position (first point of actual route)
+        route_start_m = self.route.points[0].distance_m if self.route.points else 0
+        start_x = None
+        if window_start_m <= route_start_m <= window_end_m:
+            # Start line is visible in this window
+            progress_in_window = (route_start_m - window_start_m) / VIEWPORT_TOTAL_M
+            start_x = int(progress_in_window * width)
+            start_x = max(0, min(start_x, width - 1))
+
+        # Calculate finish line position (last point of actual route)
+        route_end_m = self.route.points[-1].distance_m if self.route.points else 0
+        finish_x = None
+        if window_start_m <= route_end_m <= window_end_m:
+            # Finish line is visible in this window
+            progress_in_window = (route_end_m - window_start_m) / VIEWPORT_TOTAL_M
+            finish_x = int(progress_in_window * width)
+            finish_x = max(0, min(finish_x, width - 1))
+
         # Build the chart from top to bottom using Rich Text for styling
         chart_text = Text()
 
@@ -114,9 +132,19 @@ class ElevationChart(Widget):
                 # Calculate which row this is from bottom
                 row_from_bottom = chart_height - y - 1
 
-                # Determine if this is the rider's column
+                # Determine styling based on special columns
                 is_rider_column = (rider_x is not None and x == rider_x)
-                style = "green" if is_rider_column else "white"
+                is_start_column = (start_x is not None and x == start_x)
+                is_finish_column = (finish_x is not None and x == finish_x)
+
+                if is_finish_column:
+                    style = "red"
+                elif is_rider_column:
+                    style = "green"
+                elif is_start_column:
+                    style = "dark_green"
+                else:
+                    style = "white"
 
                 # Bottom row is always filled as baseline/ground
                 if row_from_bottom == 0:
