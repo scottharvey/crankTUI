@@ -14,9 +14,10 @@ from cranktui.state.state import get_state
 class RouteItem(Static):
     """A widget for displaying a single route."""
 
-    def __init__(self, route: Route, **kwargs):
+    def __init__(self, route: Route, index: int, **kwargs):
         super().__init__(**kwargs)
         self.route = route
+        self.index = index
         self.can_focus = True
 
     def render(self) -> str:
@@ -129,8 +130,8 @@ class RouteSelectScreen(Screen):
             with Vertical(id="routes-panel"):
                 yield Static("Routes", id="routes-panel-title")
                 with VerticalScroll(id="routes-scroll"):
-                    for route in self.routes:
-                        item = RouteItem(route)
+                    for index, route in enumerate(self.routes):
+                        item = RouteItem(route, index)
                         self.route_items.append(item)
                         yield item
             with Vertical(id="devices-panel"):
@@ -147,6 +148,14 @@ class RouteSelectScreen(Screen):
         # Update device status
         self.set_interval(1.0, self.update_device_status)
         self.update_device_status()
+
+    def on_descendant_focus(self, event) -> None:
+        """Handle when a descendant widget receives focus."""
+        if isinstance(event.widget, RouteItem):
+            for i, item in enumerate(self.route_items):
+                if item is event.widget:
+                    self.current_index = i
+                    break
 
     async def update_device_status(self) -> None:
         """Update the device status display."""
@@ -174,7 +183,8 @@ class RouteSelectScreen(Screen):
     def action_select_route(self) -> None:
         """Select the currently focused route."""
         if self.route_items and 0 <= self.current_index < len(self.route_items):
-            self.dismiss(self.route_items[self.current_index].route)
+            selected_route = self.route_items[self.current_index].route
+            self.dismiss(selected_route)
 
     def action_show_devices(self) -> None:
         """Show the devices screen."""

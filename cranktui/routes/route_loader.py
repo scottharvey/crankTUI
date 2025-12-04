@@ -36,7 +36,7 @@ def load_all_routes() -> list[Route]:
     routes_dir = get_routes_directory()
     routes = []
 
-    for filepath in routes_dir.glob("*.json"):
+    for filepath in sorted(routes_dir.glob("*.json")):
         try:
             route = load_route_from_file(filepath)
             routes.append(route)
@@ -44,6 +44,8 @@ def load_all_routes() -> list[Route]:
             print(f"Warning: Failed to load route from {filepath}: {e}")
             continue
 
+    # Sort routes by name for consistent ordering
+    routes.sort(key=lambda r: r.name)
     return routes
 
 

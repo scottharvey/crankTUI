@@ -47,27 +47,60 @@ class ElevationChart(Widget):
         if not self.route or not self.route.points:
             return Text("No route data", style="dim")
 
-        # Resample route to fit width
-        resampled_points = resample_route(self.route, width)
+        # Reserve bottom line for distance markers
+        chart_height = height - 1
 
-        # Get elevation range
+        # Define viewport window: 500m behind, 4500m ahead
+        VIEWPORT_BEHIND_M = 500
+        VIEWPORT_AHEAD_M = 4500
+        VIEWPORT_TOTAL_M = VIEWPORT_BEHIND_M + VIEWPORT_AHEAD_M
+
+        # Calculate window bounds
+        window_start_m = self.current_distance_m - VIEWPORT_BEHIND_M
+        window_end_m = self.current_distance_m + VIEWPORT_AHEAD_M
+
+        # Get route points within window (with padding at start/end)
+        visible_points = self._get_visible_points(window_start_m, window_end_m)
+
+        # Resample visible points to fit width
+        resampled_points = self._resample_points(visible_points, width)
+
+        # Get elevation range for visible window
         min_elev, max_elev = get_elevation_range(resampled_points)
         elev_range = max_elev - min_elev
 
         if elev_range == 0:
             elev_range = 1
 
-        # Reserve bottom line for distance markers
-        chart_height = height - 1
+        # Calculate vertical scale with exaggeration for visibility
+        # Use 3x vertical exaggeration to make grades clearly visible
+        # This makes a 5% grade look like ~15% visually, which is much more readable
+        # while still maintaining proportional representation of the terrain
 
-        # Normalize heights to chart height
+        VERTICAL_EXAGGERATION = 3.0
+
+        meters_per_char_horizontal = VIEWPORT_TOTAL_M / width if width > 0 else 50
+        # Use 3x exaggeration: divide by 3 to make vertical features 3x larger
+        meters_per_row = meters_per_char_horizontal / VERTICAL_EXAGGERATION
+
+        # Calculate how many rows the elevation range would occupy
+        rows_needed = int(elev_range / meters_per_row) + 1
+
+        # If it still doesn't fit in available height, scale it down proportionally
+        if rows_needed > chart_height:
+            meters_per_row = elev_range / chart_height
+
+        # Normalize heights using realistic scale
         normalized_heights = []
         for point in resampled_points:
-            normalized = int(((point.elevation_m - min_elev) / elev_range) * chart_height)
-            normalized_heights.append(normalized)
+            # Calculate height in rows from the minimum elevation
+            height_in_rows = int((point.elevation_m - min_elev) / meters_per_row)
+            # Clamp to chart height
+            height_in_rows = min(height_in_rows, chart_height - 1)
+            normalized_heights.append(height_in_rows)
 
-        # Calculate rider position
-        rider_x = self._calculate_rider_position(width)
+        # Calculate rider position (always at 10% from left edge in scrolling view)
+        rider_x = int(width * (VIEWPORT_BEHIND_M / VIEWPORT_TOTAL_M))
 
         # Build the chart from top to bottom using Rich Text for styling
         chart_text = Text()
@@ -109,50 +142,141 @@ class ElevationChart(Widget):
             if y < chart_height - 1:
                 chart_text.append("\n")
 
-        # Add distance markers at the bottom
+        # Add distance markers at the bottom (show visible window range)
         chart_text.append("\n")
-        distance_line = self._create_distance_markers(width, self.route.distance_km)
+        distance_line = self._create_distance_markers(width, window_start_m / 1000, window_end_m / 1000)
         chart_text.append(distance_line, style="white")
 
         return chart_text
 
-    def _calculate_rider_position(self, width: int) -> int | None:
-        """Calculate the X position of the rider marker.
+    def _get_visible_points(self, window_start_m: float, window_end_m: float) -> list:
+        """Get route points within the visible window, with padding at edges.
+
+        Args:
+            window_start_m: Start of visible window in meters
+            window_end_m: End of visible window in meters
+
+        Returns:
+            List of RoutePoint objects for the visible window
+        """
+        from cranktui.routes.route import RoutePoint
+
+        visible_points = []
+        route_start_m = self.route.points[0].distance_m if self.route.points else 0
+        route_end_m = self.route.points[-1].distance_m if self.route.points else 0
+
+        # Add padding before route start if needed
+        if window_start_m < route_start_m:
+            # Add flat ground padding
+            start_elevation = self.route.points[0].elevation_m if self.route.points else 0
+            # Add point at window start
+            visible_points.append(RoutePoint(distance_m=window_start_m, elevation_m=start_elevation))
+            # Add point just before route starts
+            if window_end_m >= route_start_m:
+                visible_points.append(RoutePoint(distance_m=route_start_m - 0.1, elevation_m=start_elevation))
+
+        # Add actual route points within window
+        for point in self.route.points:
+            if window_start_m <= point.distance_m <= window_end_m:
+                visible_points.append(point)
+
+        # Add padding after route end if needed
+        if window_end_m > route_end_m:
+            # Add flat ground padding
+            end_elevation = self.route.points[-1].elevation_m if self.route.points else 0
+            # Add point just after route ends
+            if window_start_m <= route_end_m:
+                visible_points.append(RoutePoint(distance_m=route_end_m + 0.1, elevation_m=end_elevation))
+            # Add point at window end
+            visible_points.append(RoutePoint(distance_m=window_end_m, elevation_m=end_elevation))
+
+        return visible_points
+
+    def _resample_points(self, points: list, target_width: int) -> list:
+        """Resample points to target width.
+
+        Args:
+            points: List of RoutePoint objects
+            target_width: Number of samples desired
+
+        Returns:
+            List of resampled RoutePoint objects
+        """
+        from cranktui.routes.route import RoutePoint
+
+        if not points or len(points) < 2:
+            return points
+
+        start_distance = points[0].distance_m
+        end_distance = points[-1].distance_m
+        total_distance = end_distance - start_distance
+
+        if total_distance == 0:
+            return points
+
+        # Create evenly spaced samples
+        resampled = []
+        for i in range(target_width):
+            # Calculate distance for this sample
+            fraction = i / (target_width - 1) if target_width > 1 else 0
+            sample_distance = start_distance + (fraction * total_distance)
+
+            # Find surrounding points and interpolate elevation
+            elevation = self._interpolate_elevation(points, sample_distance)
+            resampled.append(RoutePoint(distance_m=sample_distance, elevation_m=elevation))
+
+        return resampled
+
+    def _interpolate_elevation(self, points: list, distance_m: float) -> float:
+        """Interpolate elevation at a given distance.
+
+        Args:
+            points: List of RoutePoint objects
+            distance_m: Distance to interpolate at
+
+        Returns:
+            Interpolated elevation in meters
+        """
+        if not points:
+            return 0.0
+
+        # Before first point
+        if distance_m <= points[0].distance_m:
+            return points[0].elevation_m
+
+        # After last point
+        if distance_m >= points[-1].distance_m:
+            return points[-1].elevation_m
+
+        # Find surrounding points
+        for i in range(len(points) - 1):
+            p1 = points[i]
+            p2 = points[i + 1]
+
+            if p1.distance_m <= distance_m <= p2.distance_m:
+                # Linear interpolation
+                if p2.distance_m == p1.distance_m:
+                    return p1.elevation_m
+                ratio = (distance_m - p1.distance_m) / (p2.distance_m - p1.distance_m)
+                return p1.elevation_m + ratio * (p2.elevation_m - p1.elevation_m)
+
+        return points[-1].elevation_m
+
+    def _create_distance_markers(self, width: int, start_km: float, end_km: float) -> str:
+        """Create distance markers for the bottom of the chart.
 
         Args:
             width: Chart width in characters
-
-        Returns:
-            X position (0 to width-1), or None if not applicable
+            start_km: Start distance in km
+            end_km: End distance in km
         """
-        if not self.route:
-            return None
-
-        total_distance_m = self.route.distance_km * 1000
-
-        if total_distance_m == 0:
-            return None
-
-        # Calculate position as fraction of total distance
-        progress = self.current_distance_m / total_distance_m
-
-        # Clamp to [0, 1]
-        progress = max(0.0, min(1.0, progress))
-
-        # Convert to X position
-        x = int(progress * (width - 1))
-
-        return x
-
-    def _create_distance_markers(self, width: int, total_distance_km: float) -> str:
-        """Create distance markers for the bottom of the chart."""
         if width < 10:
             return ""
 
-        # Show markers at start, middle, and end
-        start = "0"
-        middle = f"{total_distance_km / 2:.1f}"
-        end = f"{total_distance_km:.1f}km"
+        # Show markers at start, middle, and end of visible window
+        start = f"{start_km:.1f}" if start_km >= 0 else "0.0"
+        middle = f"{(start_km + end_km) / 2:.1f}"
+        end = f"{end_km:.1f}km"
 
         # Calculate spacing
         middle_pos = width // 2 - len(middle) // 2
