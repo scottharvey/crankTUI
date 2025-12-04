@@ -46,19 +46,25 @@ class RidingScreen(Screen):
 
     #stats-panel {
         width: 1fr;
-        border: round white;
-        padding: 1;
+        layout: vertical;
     }
 
     #route-info {
+        height: auto;
+        border: round white;
+        padding: 1;
         margin-bottom: 1;
-        padding-bottom: 1;
-        border-bottom: solid white;
+    }
+
+    StatsPanel {
+        height: auto;
+        border: round white;
+        padding: 1;
+        margin-bottom: 1;
     }
 
     #minimap-panel {
         height: 10;
-        margin-top: 1;
         border: round white;
         padding: 1;
     }

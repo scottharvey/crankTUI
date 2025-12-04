@@ -11,12 +11,7 @@ from cranktui.state.state import get_state
 
 
 class ElevationChart(Widget):
-    """Widget that renders an elevation profile using braille characters.
-
-    Displays two views:
-    - Main view: Scrolling detailed view centered on rider (~500m window)
-    - Minimap: Small overview of entire route in bottom-right corner
-    """
+    """Widget that renders an elevation profile using braille characters."""
 
     # Braille characters for different top edge patterns
     FULL_BLOCK = "⣿"          # Full block for filled areas
@@ -31,7 +26,6 @@ class ElevationChart(Widget):
         super().__init__(**kwargs)
         self.route = route
         self.state = get_state()
-        self.window_size_m = 500.0  # Show 500m window (250m ahead, 250m behind)
 
     def on_mount(self) -> None:
         """Handle mount - start update timer."""
@@ -43,7 +37,7 @@ class ElevationChart(Widget):
         self.current_distance_m = metrics.distance_m
 
     def render(self) -> RenderableType:
-        """Render the elevation chart with main view and minimap."""
+        """Render the elevation chart."""
         width = self.size.width
         height = self.size.height
 
@@ -53,24 +47,74 @@ class ElevationChart(Widget):
         if not self.route or not self.route.points:
             return Text("No route data", style="dim")
 
-        # Minimap dimensions (bottom-right corner)
-        minimap_width = min(20, width // 4)
-        minimap_height = min(8, height // 4)
+        # Resample route to fit width
+        resampled_points = resample_route(self.route, width)
 
-        # Main view area (leave space for minimap)
-        main_width = width
-        main_height = height - 1  # Reserve bottom line for distance markers
+        # Get elevation range
+        min_elev, max_elev = get_elevation_range(resampled_points)
+        elev_range = max_elev - min_elev
 
-        # Render main scrolling view
-        main_view = self._render_main_view(main_width, main_height)
+        if elev_range == 0:
+            elev_range = 1
 
-        # Render minimap overlay
-        minimap = self._render_minimap(minimap_width, minimap_height)
+        # Reserve bottom line for distance markers
+        chart_height = height - 1
 
-        # Combine views: overlay minimap on bottom-right of main view
-        result = self._overlay_minimap(main_view, minimap, width, height, minimap_width, minimap_height)
+        # Normalize heights to chart height
+        normalized_heights = []
+        for point in resampled_points:
+            normalized = int(((point.elevation_m - min_elev) / elev_range) * chart_height)
+            normalized_heights.append(normalized)
 
-        return result
+        # Calculate rider position
+        rider_x = self._calculate_rider_position(width)
+
+        # Build the chart from top to bottom using Rich Text for styling
+        chart_text = Text()
+
+        for y in range(chart_height):
+            for x, h in enumerate(normalized_heights):
+                # Calculate which row this is from bottom
+                row_from_bottom = chart_height - y - 1
+
+                # Determine if this is the rider's column
+                is_rider_column = (rider_x is not None and x == rider_x)
+                style = "green" if is_rider_column else "white"
+
+                # Check if this position should be filled
+                if row_from_bottom < h:
+                    # Below the top - always use full block
+                    chart_text.append(self.FULL_BLOCK, style=style)
+                elif row_from_bottom == h:
+                    # This is the top row - use slope-aware character
+                    # Check previous column to see if we're coming from higher
+                    prev_h = normalized_heights[x - 1] if x > 0 else h
+                    # Check next column to see where we're going
+                    next_h = normalized_heights[x + 1] if x < len(normalized_heights) - 1 else h
+
+                    if prev_h > h:
+                        # Coming down from previous column - use down-slope
+                        chart_text.append(self.SLOPE_DOWN, style=style)
+                    elif next_h > h:
+                        # Next column is higher - upward slope
+                        chart_text.append(self.SLOPE_UP, style=style)
+                    else:
+                        # Flat or going down to next
+                        chart_text.append(self.SLOPE_FLAT, style=style)
+                else:
+                    # Above the elevation - empty
+                    chart_text.append(" ")
+
+            # Add newline after each row (except the last)
+            if y < chart_height - 1:
+                chart_text.append("\n")
+
+        # Add distance markers at the bottom
+        chart_text.append("\n")
+        distance_line = self._create_distance_markers(width, self.route.distance_km)
+        chart_text.append(distance_line, style="white")
+
+        return chart_text
 
     def _calculate_rider_position(self, width: int) -> int | None:
         """Calculate the X position of the rider marker.
@@ -129,251 +173,6 @@ class ElevationChart(Widget):
                 line[pos] = char
 
         # Place end marker
-        for i, char in enumerate(end):
-            pos = end_pos + i
-            if 0 <= pos < width:
-                line[pos] = char
-
-        return "".join(line)
-
-    def _render_main_view(self, width: int, height: int) -> list[str]:
-        """Render the main scrolling elevation view.
-
-        Returns:
-            List of strings, one per row
-        """
-        if not self.route:
-            return [""] * height
-
-        total_distance_m = self.route.distance_km * 1000
-
-        # Calculate window bounds (centered on rider)
-        center_distance = self.current_distance_m
-        window_start = max(0, center_distance - self.window_size_m / 2)
-        window_end = min(total_distance_m, center_distance + self.window_size_m / 2)
-
-        # Get route points in this window
-        window_points = [
-            p for p in self.route.points
-            if window_start <= p.distance_m <= window_end
-        ]
-
-        if len(window_points) < 2:
-            return ["No data in window"] + [""] * (height - 1)
-
-        # Resample to fit width
-        # Create a temporary route object for the window
-        from cranktui.routes.route import Route, RoutePoint
-        window_route = Route(
-            name="window",
-            description="",
-            distance_km=(window_end - window_start) / 1000,
-            points=window_points
-        )
-
-        resampled_points = resample_route(window_route, width)
-
-        # Get elevation range for this window
-        min_elev, max_elev = get_elevation_range(resampled_points)
-        elev_range = max_elev - min_elev
-
-        if elev_range == 0:
-            elev_range = 1
-
-        # Calculate realistic vertical scale
-        chart_height = height
-        meters_per_row = elev_range / (chart_height * 0.5)
-        meters_per_row = max(2.0, meters_per_row)
-
-        # Normalize heights
-        normalized_heights = []
-        for point in resampled_points:
-            height_in_rows = (point.elevation_m - min_elev) / meters_per_row
-            normalized = int(height_in_rows)
-            normalized = min(normalized, chart_height - 1)
-            normalized_heights.append(normalized)
-
-        # Calculate rider position in window
-        if window_end > window_start:
-            rider_progress = (center_distance - window_start) / (window_end - window_start)
-            rider_x = int(rider_progress * (width - 1))
-        else:
-            rider_x = width // 2
-
-        # Build the chart rows
-        rows = []
-        for y in range(chart_height):
-            row = []
-            for x, h in enumerate(normalized_heights):
-                row_from_bottom = chart_height - y - 1
-
-                is_rider_column = (x == rider_x)
-                style = "green" if is_rider_column else "white"
-
-                if row_from_bottom < h:
-                    row.append(self.FULL_BLOCK)
-                elif row_from_bottom == h:
-                    prev_h = normalized_heights[x - 1] if x > 0 else h
-                    next_h = normalized_heights[x + 1] if x < len(normalized_heights) - 1 else h
-
-                    if prev_h > h:
-                        row.append(self.SLOPE_DOWN)
-                    elif next_h > h:
-                        row.append(self.SLOPE_UP)
-                    else:
-                        row.append(self.SLOPE_FLAT)
-                else:
-                    row.append(" ")
-
-            rows.append("".join(row))
-
-        return rows
-
-    def _render_minimap(self, width: int, height: int) -> list[str]:
-        """Render the minimap showing full route.
-
-        Returns:
-            List of strings, one per row
-        """
-        if not self.route or width < 5 or height < 3:
-            return [""] * height
-
-        # Resample entire route to minimap width
-        resampled_points = resample_route(self.route, width)
-
-        # Get full route elevation range
-        min_elev, max_elev = get_elevation_range(resampled_points)
-        elev_range = max_elev - min_elev
-
-        if elev_range == 0:
-            elev_range = 1
-
-        # Normalize to minimap height
-        chart_height = height - 1  # Reserve one line for label
-
-        normalized_heights = []
-        for point in resampled_points:
-            normalized = int(((point.elevation_m - min_elev) / elev_range) * chart_height)
-            normalized = min(normalized, chart_height - 1)
-            normalized_heights.append(normalized)
-
-        # Calculate rider position on minimap
-        total_distance_m = self.route.distance_km * 1000
-        if total_distance_m > 0:
-            progress = self.current_distance_m / total_distance_m
-            progress = max(0.0, min(1.0, progress))
-            rider_x = int(progress * (width - 1))
-        else:
-            rider_x = 0
-
-        # Build minimap rows
-        rows = []
-        for y in range(chart_height):
-            row = []
-            for x, h in enumerate(normalized_heights):
-                row_from_bottom = chart_height - y - 1
-
-                is_rider_column = (x == rider_x)
-
-                if row_from_bottom <= h:
-                    # Use different character for rider position
-                    if is_rider_column:
-                        row.append("▲")
-                    else:
-                        row.append("⣿")
-                else:
-                    row.append(" ")
-
-            rows.append("".join(row))
-
-        # Add label
-        rows.append(" MINIMAP")
-
-        return rows
-
-    def _overlay_minimap(self, main_view: list[str], minimap: list[str],
-                        total_width: int, total_height: int,
-                        minimap_width: int, minimap_height: int) -> Text:
-        """Overlay minimap on bottom-right of main view.
-
-        Args:
-            main_view: List of main view rows
-            minimap: List of minimap rows
-            total_width: Total chart width
-            total_height: Total chart height
-            minimap_width: Minimap width
-            minimap_height: Minimap height
-
-        Returns:
-            Combined Text with minimap overlaid
-        """
-        result = Text()
-
-        # Position minimap in bottom-right
-        minimap_start_row = total_height - minimap_height - 1
-        minimap_start_col = total_width - minimap_width - 1
-
-        for row_idx in range(total_height - 1):  # -1 for distance markers
-            if row_idx < len(main_view):
-                main_row = main_view[row_idx]
-            else:
-                main_row = " " * total_width
-
-            # Check if we need to overlay minimap on this row
-            if minimap_start_row <= row_idx < minimap_start_row + minimap_height:
-                minimap_row_idx = row_idx - minimap_start_row
-                if minimap_row_idx < len(minimap):
-                    minimap_row = minimap[minimap_row_idx]
-
-                    # Combine: use main view up to minimap position, then minimap
-                    combined = main_row[:minimap_start_col] + minimap_row
-                    # Pad if needed
-                    if len(combined) < total_width:
-                        combined += " " * (total_width - len(combined))
-                    result.append(combined[:total_width])
-                else:
-                    result.append(main_row)
-            else:
-                result.append(main_row)
-
-            result.append("\n")
-
-        # Add distance markers for main view
-        # Show window bounds
-        window_start_km = max(0, (self.current_distance_m - self.window_size_m / 2)) / 1000
-        window_end_km = min(self.route.distance_km, (self.current_distance_m + self.window_size_m / 2) / 1000)
-
-        distance_line = self._create_window_distance_markers(total_width, window_start_km, window_end_km)
-        result.append(distance_line, style="white")
-
-        return result
-
-    def _create_window_distance_markers(self, width: int, start_km: float, end_km: float) -> str:
-        """Create distance markers showing the current window bounds."""
-        if width < 10:
-            return ""
-
-        start = f"{start_km:.1f}"
-        middle = f"{(start_km + end_km) / 2:.1f}"
-        end = f"{end_km:.1f}km"
-
-        # Calculate spacing
-        middle_pos = width // 2 - len(middle) // 2
-        end_pos = width - len(end)
-
-        # Build the marker line
-        line = [" "] * width
-
-        # Place markers
-        for i, char in enumerate(start):
-            if i < width:
-                line[i] = char
-
-        for i, char in enumerate(middle):
-            pos = middle_pos + i
-            if 0 <= pos < width:
-                line[pos] = char
-
         for i, char in enumerate(end):
             pos = end_pos + i
             if 0 <= pos < width:
