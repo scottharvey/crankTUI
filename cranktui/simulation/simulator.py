@@ -65,9 +65,10 @@ class DemoSimulator:
         # Calculate elapsed time
         elapsed = time.time() - self.start_time
 
-        # Simulate speed: oscillates between 20-30 km/h
-        base_speed = 25.0
-        speed_variation = 5.0 * math.sin(elapsed * 0.3)
+        # Simulate speed: oscillates around base speed
+        from cranktui.app import DEMO_SPEED
+        base_speed = DEMO_SPEED
+        speed_variation = (base_speed * 0.2) * math.sin(elapsed * 0.3)  # ±20% variation
         speed_kmh = base_speed + speed_variation
 
         # Simulate power: oscillates between 150-250W

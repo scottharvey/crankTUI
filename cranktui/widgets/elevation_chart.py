@@ -65,6 +65,10 @@ class ElevationChart(Widget):
         # Resample visible points to fit width
         resampled_points = self._resample_points(visible_points, width)
 
+        # Safety check: if resampling failed, return empty
+        if not resampled_points:
+            return Text("No data in viewport", style="dim")
+
         # Get elevation range for visible window
         min_elev, max_elev = get_elevation_range(resampled_points)
         elev_range = max_elev - min_elev
@@ -114,8 +118,11 @@ class ElevationChart(Widget):
                 is_rider_column = (rider_x is not None and x == rider_x)
                 style = "green" if is_rider_column else "white"
 
+                # Bottom row is always filled as baseline/ground
+                if row_from_bottom == 0:
+                    chart_text.append(self.FULL_BLOCK, style=style)
                 # Check if this position should be filled
-                if row_from_bottom < h:
+                elif row_from_bottom < h:
                     # Below the top - always use full block
                     chart_text.append(self.FULL_BLOCK, style=style)
                 elif row_from_bottom == h:
@@ -176,9 +183,20 @@ class ElevationChart(Widget):
                 visible_points.append(RoutePoint(distance_m=route_start_m - 0.1, elevation_m=start_elevation))
 
         # Add actual route points within window
-        for point in self.route.points:
+        # Also include points just outside the window for proper interpolation
+        for i, point in enumerate(self.route.points):
             if window_start_m <= point.distance_m <= window_end_m:
                 visible_points.append(point)
+            elif point.distance_m < window_start_m:
+                # Keep track of the last point before window (for interpolation)
+                if not visible_points or visible_points[-1].distance_m < point.distance_m:
+                    if visible_points and visible_points[-1].distance_m < window_start_m:
+                        visible_points.pop()
+                    visible_points.append(point)
+            elif point.distance_m > window_end_m:
+                # Add first point after window (for interpolation) and stop
+                visible_points.append(point)
+                break
 
         # Add padding after route end if needed
         if window_end_m > route_end_m:
@@ -204,15 +222,20 @@ class ElevationChart(Widget):
         """
         from cranktui.routes.route import RoutePoint
 
-        if not points or len(points) < 2:
-            return points
+        if not points:
+            return []
+
+        if len(points) == 1:
+            # If only one point, duplicate it to fill width
+            return [points[0]] * target_width
 
         start_distance = points[0].distance_m
         end_distance = points[-1].distance_m
         total_distance = end_distance - start_distance
 
         if total_distance == 0:
-            return points
+            # All points at same distance, return duplicates
+            return [points[0]] * target_width
 
         # Create evenly spaced samples
         resampled = []

@@ -17,6 +17,7 @@ from cranktui.state.state import get_state
 # Global flags
 DEBUG_MODE = False
 DEMO_MODE = False
+DEMO_SPEED = 25.0  # Default demo speed in km/h
 
 
 class ConfirmBackScreen(ModalScreen[bool]):
@@ -219,15 +220,17 @@ class CrankTUI(App):
 
 def main():
     """Run the application."""
-    global DEBUG_MODE, DEMO_MODE
+    global DEBUG_MODE, DEMO_MODE, DEMO_SPEED
 
     parser = argparse.ArgumentParser(description="crankTUI - Terminal trainer controller")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging to cranktui-debug.log")
     parser.add_argument("--demo", action="store_true", help="Run in demo mode with simulated data (no BLE required)")
+    parser.add_argument("--demo-speed", type=float, default=25.0, help="Demo mode base speed in km/h (default: 25.0)")
     args = parser.parse_args()
 
     DEBUG_MODE = args.debug
     DEMO_MODE = args.demo
+    DEMO_SPEED = args.demo_speed
 
     if DEBUG_MODE:
         # Clear the debug log at startup
