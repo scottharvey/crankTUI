@@ -82,14 +82,12 @@ class MinimapWidget(Widget):
 
                 # Determine if this is the rider's column
                 is_rider_column = (x == rider_x)
+                style = "green" if is_rider_column else "white"
 
                 # Check if this position should be filled
                 if row_from_bottom <= h:
-                    # Use different character/color for rider position
-                    if is_rider_column:
-                        chart_text.append("▲", style="green bold")
-                    else:
-                        chart_text.append(self.FULL_BLOCK, style="white")
+                    # Use green color for rider's column
+                    chart_text.append(self.FULL_BLOCK, style=style)
                 else:
                     # Above the elevation - empty
                     chart_text.append(" ")
