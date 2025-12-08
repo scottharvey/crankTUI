@@ -26,6 +26,11 @@ class RidingScreen(Screen):
         ("2", "test_resistance_med", "Test: Med Resistance"),
         ("3", "test_resistance_high", "Test: High Resistance"),
         ("e", "test_erg_mode", "Test: ERG 200W"),
+        ("f", "test_gradient_flat", "Test: Flat (0%)"),
+        ("g", "test_gradient_gentle", "Test: Gentle (3%)"),
+        ("h", "test_gradient_medium", "Test: Medium (7%)"),
+        ("j", "test_gradient_steep", "Test: Steep (12%)"),
+        ("w", "set_rider_weight", "Set Rider Weight"),
     ]
 
     CSS = """
@@ -170,6 +175,26 @@ class RidingScreen(Screen):
         """Test setting ERG mode to 200W."""
         self.run_worker(self._test_erg(200))
 
+    def action_test_gradient_flat(self) -> None:
+        """Test setting gradient to flat (0%)."""
+        self.run_worker(self._test_gradient(0.0))
+
+    def action_test_gradient_gentle(self) -> None:
+        """Test setting gradient to gentle climb (3%)."""
+        self.run_worker(self._test_gradient(3.0))
+
+    def action_test_gradient_medium(self) -> None:
+        """Test setting gradient to medium climb (7%)."""
+        self.run_worker(self._test_gradient(7.0))
+
+    def action_test_gradient_steep(self) -> None:
+        """Test setting gradient to steep climb (12%)."""
+        self.run_worker(self._test_gradient(12.0))
+
+    def action_set_rider_weight(self) -> None:
+        """Set rider characteristics for realistic gradient simulation."""
+        self.run_worker(self._set_rider_weight())
+
     async def _test_resistance(self, level: int) -> None:
         """Test resistance command."""
         ble_client = await self.state.get_ble_client()
@@ -195,5 +220,36 @@ class RidingScreen(Screen):
         success = await ble_client.set_erg_mode(power)
         if success:
             self.notify(f"Command sent! Did trainer respond?")
+        else:
+            self.notify(f"Command failed")
+
+    async def _test_gradient(self, grade_percent: float) -> None:
+        """Test gradient/SIM mode command."""
+        ble_client = await self.state.get_ble_client()
+        if not ble_client or not ble_client.is_connected:
+            self.notify("No device connected")
+            return
+
+        self.notify(f"Testing: Gradient {grade_percent:.1f}% (check debug log)")
+        success = await ble_client.set_gradient(grade_percent)
+        if success:
+            self.notify(f"Gradient set to {grade_percent:.1f}% - feel the climb!")
+        else:
+            self.notify(f"Command failed")
+
+    async def _set_rider_weight(self) -> None:
+        """Set rider characteristics."""
+        ble_client = await self.state.get_ble_client()
+        if not ble_client or not ble_client.is_connected:
+            self.notify("No device connected")
+            return
+
+        # Use settings from state (default 75kg + 10kg bike = 85kg total)
+        weight_kg = self.state.rider_weight_kg + self.state.bike_weight_kg
+
+        self.notify(f"Setting rider weight to {weight_kg:.1f}kg...")
+        success = await ble_client.set_rider_characteristics(weight_kg)
+        if success:
+            self.notify(f"Rider weight set to {weight_kg:.1f}kg! Try gradient mode now.")
         else:
             self.notify(f"Command failed")

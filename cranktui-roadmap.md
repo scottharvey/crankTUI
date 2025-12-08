@@ -124,6 +124,51 @@ cranktui
 
 ---
 
+---
+
+### Step 17: AI Route Generation
+
+**Goal:** Generate custom routes using AI from natural language descriptions.
+
+**Libraries:**
+- `httpx` or `openai` (for API calls)
+
+**What to Build:**
+- Create `routes/ai_generator.py` with:
+  - Function to call OpenRouter API (using Claude Haiku or GPT-4o-mini)
+  - Structured prompt that outputs route JSON
+  - Response validation and sanitization
+  - Error handling for API failures
+- Create `tui/screens/ai_route_generator.py` modal with:
+  - Text input for route description
+  - "Generate" button
+  - Loading indicator during generation
+  - Preview of generated elevation chart
+  - "Save" and "Cancel" buttons
+- Add keybinding to route selection screen: `[a]` for AI Generate
+- Add API key configuration:
+  - Environment variable: `OPENROUTER_API_KEY`
+  - Or add to settings screen
+- Save generated routes to `~/.local/share/cranktui/routes/`
+
+**Example Prompts:**
+- "70km ride where the first half is gentle hills and the last half is big mountains"
+- "Flat 40km time trial course"
+- "15km with 4 steep climbs for interval training"
+- "Rolling hills, 25km, never more than 5% grade"
+
+**Cost:** ~$0.001-0.01 per route generation (very cheap)
+
+**Test:**
+```bash
+export OPENROUTER_API_KEY="your-key"
+cranktui
+```
+
+**Result:** Press `a` on route selection, enter description like "30km with gradually increasing difficulty", get a custom-generated route in 1-2 seconds. Preview it, save it, ride it!
+
+---
+
 ## Optional Future Enhancements
 
 Once the core is working, consider:
@@ -133,8 +178,9 @@ Once the core is working, consider:
 - **Custom workouts** – Define interval workouts
 - **ANT+ support** – Alternative to BLE
 - **Power zones** – Visual indicators for training zones
-- **Route creation tool** – Built-in tool to create JSON routes
+- **Route creation tool** – Built-in manual tool to create JSON routes
 - **GPX import** – Convert GPX files to JSON within the app
+- **AI route variations** – "Make this route harder/longer/hillier"
 
 ---
 

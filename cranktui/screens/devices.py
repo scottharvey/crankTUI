@@ -308,8 +308,13 @@ class DevicesScreen(ModalScreen[None]):
                 if not ble_client:
                     # Create new client
                     from cranktui.ble.client import BLEClient
+                    from cranktui.config import get_bike_weight_kg, get_rider_weight_kg
 
                     ble_client = BLEClient()
+
+                    # Set rider weight for gradient simulation
+                    total_weight = get_rider_weight_kg() + get_bike_weight_kg()
+                    ble_client.set_rider_weight(total_weight)
 
                 # Try to connect
                 status_bar.update(f"Connecting to {device.device_name}...")
