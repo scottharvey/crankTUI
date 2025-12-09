@@ -32,6 +32,7 @@ class ConfirmQuitScreen(ModalScreen[bool]):
     CSS = """
     ConfirmQuitScreen {
         align: center middle;
+        background: transparent;
     }
 
     #dialog {
@@ -107,6 +108,7 @@ class ConfirmBackScreen(ModalScreen[bool]):
     CSS = """
     ConfirmBackScreen {
         align: center middle;
+        background: transparent;
     }
 
     #dialog {

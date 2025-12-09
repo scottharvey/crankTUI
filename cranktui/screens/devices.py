@@ -49,6 +49,7 @@ class DevicesScreen(ModalScreen[None]):
     CSS = """
     DevicesScreen {
         align: center middle;
+        background: transparent;
     }
 
     #devices-dialog {

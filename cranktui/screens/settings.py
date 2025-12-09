@@ -21,6 +21,7 @@ class SettingsScreen(ModalScreen[None]):
     CSS = """
     SettingsScreen {
         align: center middle;
+        background: transparent;
     }
 
     #settings-dialog {

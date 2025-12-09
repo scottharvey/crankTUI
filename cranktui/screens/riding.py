@@ -30,6 +30,7 @@ class HelpModal(ModalScreen):
     CSS = """
     HelpModal {
         align: center middle;
+        background: transparent;
     }
 
     #help-dialog {
@@ -127,6 +128,7 @@ class PauseRideModal(ModalScreen[str]):
     CSS = """
     PauseRideModal {
         align: center middle;
+        background: transparent;
     }
 
     #dialog {
