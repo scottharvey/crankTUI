@@ -96,82 +96,6 @@ class ConfirmQuitScreen(ModalScreen[bool]):
             self.dismiss(False)
 
 
-class ConfirmBackScreen(ModalScreen[bool]):
-    """Modal dialog to confirm going back to route selection."""
-
-    BINDINGS = [
-        ("escape", "cancel", "Cancel"),
-        ("left", "navigate_left", "Left"),
-        ("right", "navigate_right", "Right"),
-    ]
-
-    CSS = """
-    ConfirmBackScreen {
-        align: center middle;
-        background: transparent;
-    }
-
-    #dialog {
-        width: 50;
-        height: 9;
-        border: round white;
-        background: $background 60%;
-        padding: 1 2;
-    }
-
-    #question {
-        width: 100%;
-        height: auto;
-        content-align: center middle;
-        margin-bottom: 1;
-    }
-
-    #buttons {
-        width: 100%;
-        height: auto;
-        align: center middle;
-    }
-
-    Button {
-        margin: 0 1;
-        background: transparent;
-        border: round $surface;
-        color: white;
-    }
-
-    Button:focus {
-        border: round white;
-    }
-    """
-
-    def compose(self) -> ComposeResult:
-        """Create dialog widgets."""
-        with Container(id="dialog"):
-            yield Label("Return to route selection?", id="question")
-            with Horizontal(id="buttons"):
-                yield Button("No", id="no")
-                yield Button("Yes", id="yes")
-
-    def action_cancel(self) -> None:
-        """Cancel going back."""
-        self.dismiss(False)
-
-    def action_navigate_left(self) -> None:
-        """Navigate to No button (left side)."""
-        self.query_one("#no", Button).focus()
-
-    def action_navigate_right(self) -> None:
-        """Navigate to Yes button (right side)."""
-        self.query_one("#yes", Button).focus()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button press."""
-        if event.button.id == "yes":
-            self.dismiss(True)
-        else:
-            self.dismiss(False)
-
-
 class CrankTUI(App):
     """A Textual app for KICKR trainer control."""
 
@@ -289,24 +213,13 @@ class CrankTUI(App):
 
     def on_riding_complete(self, result) -> None:
         """Handle when riding screen is dismissed."""
-        # Show confirmation dialog
-        self.push_screen(ConfirmBackScreen(), self.handle_confirm_back)
+        # Clear selected route
+        self.selected_route = None
 
-
-    def handle_confirm_back(self, confirmed: bool) -> None:
-        """Handle the confirmation result."""
-        if confirmed:
-            # Clear selected route
-            self.selected_route = None
-
-            # Load routes and show selection screen
-            routes = load_all_routes()
-            if routes:
-                self.push_screen(RouteSelectScreen(routes), self.on_route_selected)
-        else:
-            # Return to riding screen
-            if self.selected_route:
-                self.push_screen(RidingScreen(self.selected_route), self.on_riding_complete)
+        # Load routes and show selection screen
+        routes = load_all_routes()
+        if routes:
+            self.push_screen(RouteSelectScreen(routes), self.on_route_selected)
 
 
 def main():
