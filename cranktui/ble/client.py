@@ -538,7 +538,11 @@ class BLEClient:
                     "speed_kmh": self._latest_speed_kmh,
                     "distance_m": 0.0,
                 }
-                callback(parsed)
+                try:
+                    callback(parsed)
+                except Exception:
+                    # Callback may fail if UI is not ready
+                    pass
 
         except Exception as e:
             debug_log(f"Error parsing CSC measurement data: {e}")
@@ -593,7 +597,12 @@ class BLEClient:
                 "distance_m": 0.0,
             }
 
-            callback(parsed)
+            try:
+                callback(parsed)
+            except Exception as callback_error:
+                # Callback may fail if UI is not ready (e.g., wrong screen)
+                # This is normal, just ignore silently
+                pass
 
         except Exception as e:
             debug_log(f"Error parsing cycling power data: {e}")
@@ -625,7 +634,11 @@ class BLEClient:
             }
 
             # Call the callback with parsed data
-            callback(parsed)
+            try:
+                callback(parsed)
+            except Exception:
+                # Callback may fail if UI is not ready
+                pass
 
         except Exception as e:
             debug_log(f"Error parsing Wahoo data: {e}")

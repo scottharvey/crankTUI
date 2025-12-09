@@ -1,9 +1,12 @@
 """Riding screen for active training session."""
 
+import asyncio
+
 from textual.app import ComposeResult
-from textual.containers import Container
-from textual.screen import Screen
-from textual.widgets import Footer, Header, Static
+from textual.binding import Binding
+from textual.containers import Container, Horizontal, Vertical
+from textual.screen import Screen, ModalScreen
+from textual.widgets import Button, Footer, Header, Label, Static
 
 from cranktui.routes.route import Route
 from cranktui.screens.devices import DevicesScreen
@@ -14,23 +17,115 @@ from cranktui.widgets.minimap import MinimapWidget
 from cranktui.widgets.stats_panel import StatsPanel
 
 
+class HelpModal(ModalScreen):
+    """Modal screen showing keyboard shortcuts."""
+
+    BINDINGS = [
+        ("escape", "dismiss", "Close"),
+        ("h", "dismiss", "Close"),
+    ]
+
+    CSS = """
+    HelpModal {
+        align: center middle;
+    }
+
+    #help-dialog {
+        width: 40%;
+        height: auto;
+        max-height: 90%;
+        border: round white;
+        background: $surface;
+        padding: 1;
+    }
+
+    #header {
+        width: 100%;
+        height: auto;
+        content-align: center middle;
+        padding-bottom: 1;
+        border-bottom: solid white;
+    }
+
+    #help-content {
+        width: 100%;
+        height: auto;
+        padding: 1 2;
+    }
+
+    #buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+        padding: 1;
+    }
+
+    Button {
+        margin: 0 1;
+        background: transparent;
+        border: round $surface;
+        color: white;
+    }
+
+    Button:focus {
+        border: round white;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        """Create the help dialog."""
+        with Container(id="help-dialog"):
+            yield Label("Keyboard Shortcuts", id="header")
+            yield Static(self._build_help_text(), id="help-content")
+            with Horizontal(id="buttons"):
+                yield Button("Close", id="close-btn")
+        yield Footer()
+
+    def on_button_pressed(self, event) -> None:
+        """Handle button press."""
+        self.dismiss()
+
+    def _build_help_text(self) -> str:
+        """Build the help text content."""
+        return """
+Navigation
+  ESC         Go Back
+  d           Open Devices Screen
+  h           Show this help
+
+Mode Control
+  m           Toggle Mode (DEMO → LIVE → SIM)
+              DEMO: Simulated ride data
+              LIVE: Manual control with trainer
+              SIM:  Automatic grade-following
+
+Manual Resistance (LIVE mode)
+  1, 2, 3     Resistance level (Low/Med/High)
+  e           ERG mode - constant 200W
+  6           Flat (0% gradient)
+  7           Gentle climb (3%)
+  8           Medium climb (7%)
+  9           Steep climb (12%)
+"""
+
+
 class RidingScreen(Screen):
     """Main riding screen with elevation profile and stats."""
 
     BINDINGS = [
-        ("q", "quit", "Quit"),
         ("escape", "request_back", "Back"),
         ("d", "show_devices", "Devices"),
-        ("m", "toggle_mode", "Toggle Mode"),
-        ("1", "test_resistance_low", "Test: Low Resistance"),
-        ("2", "test_resistance_med", "Test: Med Resistance"),
-        ("3", "test_resistance_high", "Test: High Resistance"),
-        ("e", "test_erg_mode", "Test: ERG 200W"),
-        ("f", "test_gradient_flat", "Test: Flat (0%)"),
-        ("g", "test_gradient_gentle", "Test: Gentle (3%)"),
-        ("h", "test_gradient_medium", "Test: Medium (7%)"),
-        ("j", "test_gradient_steep", "Test: Steep (12%)"),
-        ("w", "set_rider_weight", "Set Rider Weight"),
+        ("m", "toggle_mode", "Mode"),
+        ("h", "show_help", "Help"),
+        # Hidden bindings - functional but not shown in footer
+        Binding("1", "test_resistance_low", "Test: Low Resistance", show=False),
+        Binding("2", "test_resistance_med", "Test: Med Resistance", show=False),
+        Binding("3", "test_resistance_high", "Test: High Resistance", show=False),
+        Binding("e", "test_erg_mode", "Test: ERG 200W", show=False),
+        Binding("6", "test_gradient_flat", "Test: Flat (0%)", show=False),
+        Binding("7", "test_gradient_gentle", "Test: Gentle (3%)", show=False),
+        Binding("8", "test_gradient_medium", "Test: Medium (7%)", show=False),
+        Binding("9", "test_gradient_steep", "Test: Steep (12%)", show=False),
     ]
 
     CSS = """
@@ -80,6 +175,9 @@ class RidingScreen(Screen):
         self.route = route
         self.simulator = DemoSimulator(route)
         self.state = get_state()
+        self.sim_task: asyncio.Task | None = None
+        self.last_gradient: float = 0.0  # For smoothing
+        self.target_gradient: float = 0.0  # For smoothing
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -115,6 +213,7 @@ class RidingScreen(Screen):
     async def on_unmount(self) -> None:
         """Handle unmount - stop simulation and reset state."""
         await self.simulator.stop()
+        await self._stop_sim_mode()
         # Reset state for next ride (but keep BLE client)
         ble_client = await self.state.get_ble_client()
         await self.state.reset()
@@ -128,17 +227,24 @@ class RidingScreen(Screen):
         """Show the devices screen."""
         self.app.push_screen(DevicesScreen())
 
+    def action_show_help(self) -> None:
+        """Show the help modal."""
+        self.app.push_screen(HelpModal())
+
     def action_toggle_mode(self) -> None:
         """Toggle between Demo and Live modes."""
         self.run_worker(self._toggle_mode())
 
     async def _toggle_mode(self) -> None:
-        """Async toggle mode implementation."""
+        """Async toggle mode implementation.
+
+        Cycles through modes: DEMO → LIVE → SIM → DEMO
+        """
         from cranktui.app import DEMO_MODE
 
         # Can't toggle if --demo flag was passed
         if DEMO_MODE:
-            self.notify("Started with --demo flag, cannot switch to LIVE mode")
+            self.notify("Started with --demo flag, cannot toggle modes")
             return
 
         metrics = await self.state.get_metrics()
@@ -150,11 +256,25 @@ class RidingScreen(Screen):
                 # Stop demo simulator
                 await self.simulator.stop()
                 await self.state.update_metrics(mode="LIVE")
-                self.notify("Switched to LIVE mode")
+                self.notify("Switched to LIVE mode (manual control)")
             else:
-                self.notify("No device connected - cannot switch to LIVE mode")
-        else:
+                self.notify("No device connected - cannot switch modes")
+        elif metrics.mode == "LIVE":
+            # Switch to SIM mode (automatic grade-following)
+            if ble_client and ble_client.is_connected:
+                await self._start_sim_mode()
+                self.notify("Switched to SIM mode (auto grade-following)")
+            else:
+                self.notify("No device connected")
+        elif metrics.mode == "SIM":
             # Switch back to DEMO mode
+            await self._stop_sim_mode()
+            await self.state.update_metrics(mode="DEMO")
+            await self.simulator.start()
+            self.notify("Switched to DEMO mode")
+        else:
+            # Unknown mode, reset to DEMO
+            await self._stop_sim_mode()
             await self.state.update_metrics(mode="DEMO")
             await self.simulator.start()
             self.notify("Switched to DEMO mode")
@@ -191,10 +311,6 @@ class RidingScreen(Screen):
         """Test setting gradient to steep climb (12%)."""
         self.run_worker(self._test_gradient(12.0))
 
-    def action_set_rider_weight(self) -> None:
-        """Set rider characteristics for realistic gradient simulation."""
-        self.run_worker(self._set_rider_weight())
-
     async def _test_resistance(self, level: int) -> None:
         """Test resistance command."""
         ble_client = await self.state.get_ble_client()
@@ -202,10 +318,9 @@ class RidingScreen(Screen):
             self.notify("No device connected")
             return
 
-        self.notify(f"Testing: Set resistance to {level}% (check debug log)")
         success = await ble_client.set_resistance_level(level)
         if success:
-            self.notify(f"Command sent! Did resistance change?")
+            self.notify(f"Resistance set to {level}%")
         else:
             self.notify(f"Command failed")
 
@@ -216,10 +331,9 @@ class RidingScreen(Screen):
             self.notify("No device connected")
             return
 
-        self.notify(f"Testing: ERG mode {power}W (check debug log)")
         success = await ble_client.set_erg_mode(power)
         if success:
-            self.notify(f"Command sent! Did trainer respond?")
+            self.notify(f"ERG mode: {power}W")
         else:
             self.notify(f"Command failed")
 
@@ -230,26 +344,121 @@ class RidingScreen(Screen):
             self.notify("No device connected")
             return
 
-        self.notify(f"Testing: Gradient {grade_percent:.1f}% (check debug log)")
         success = await ble_client.set_gradient(grade_percent)
         if success:
-            self.notify(f"Gradient set to {grade_percent:.1f}% - feel the climb!")
+            self.notify(f"Gradient: {grade_percent:.1f}%")
         else:
             self.notify(f"Command failed")
 
-    async def _set_rider_weight(self) -> None:
-        """Set rider characteristics."""
-        ble_client = await self.state.get_ble_client()
-        if not ble_client or not ble_client.is_connected:
-            self.notify("No device connected")
-            return
+    def _calculate_grade(self, distance_m: float) -> float:
+        """Calculate grade percentage at given distance.
 
-        # Use settings from state (default 75kg + 10kg bike = 85kg total)
-        weight_kg = self.state.rider_weight_kg + self.state.bike_weight_kg
+        Uses 100m lookahead for realistic grade calculation.
 
-        self.notify(f"Setting rider weight to {weight_kg:.1f}kg...")
-        success = await ble_client.set_rider_characteristics(weight_kg)
-        if success:
-            self.notify(f"Rider weight set to {weight_kg:.1f}kg! Try gradient mode now.")
+        Args:
+            distance_m: Current distance in meters
+
+        Returns:
+            Grade percentage (positive = uphill, negative = downhill)
+        """
+        if not self.route.points or len(self.route.points) < 2:
+            return 0.0
+
+        # Get elevation at current position
+        current_elevation = self.route.get_elevation_at_distance(distance_m)
+
+        # Look ahead 100m to calculate grade
+        lookahead_distance = distance_m + 100.0
+        max_distance = self.route.distance_km * 1000
+
+        if lookahead_distance > max_distance:
+            lookahead_distance = max_distance
+
+        lookahead_elevation = self.route.get_elevation_at_distance(lookahead_distance)
+
+        # Calculate grade percentage
+        elevation_change = lookahead_elevation - current_elevation
+        horizontal_distance = lookahead_distance - distance_m
+
+        if horizontal_distance == 0:
+            return 0.0
+
+        grade = (elevation_change / horizontal_distance) * 100.0
+        return grade
+
+    def _smooth_gradient(self, target: float, current: float, max_change: float = 1.0) -> float:
+        """Smooth gradient changes to avoid jarring resistance shifts.
+
+        Args:
+            target: Target gradient percentage
+            current: Current gradient percentage
+            max_change: Maximum change per update (default 1% per 2 seconds)
+
+        Returns:
+            Smoothed gradient value
+        """
+        diff = target - current
+        if abs(diff) <= max_change:
+            return target
+        elif diff > 0:
+            return current + max_change
         else:
-            self.notify(f"Command failed")
+            return current - max_change
+
+    async def _start_sim_mode(self) -> None:
+        """Start SIM mode - automatic grade-based resistance control."""
+        if self.sim_task is not None:
+            return  # Already running
+
+        self.last_gradient = 0.0
+        self.target_gradient = 0.0
+        # Set mode BEFORE starting task to avoid race condition
+        await self.state.update_metrics(mode="SIM")
+        self.sim_task = asyncio.create_task(self._sim_mode_loop())
+
+    async def _stop_sim_mode(self) -> None:
+        """Stop SIM mode background task."""
+        if self.sim_task is not None:
+            self.sim_task.cancel()
+            try:
+                await self.sim_task
+            except asyncio.CancelledError:
+                pass
+            self.sim_task = None
+
+    async def _sim_mode_loop(self) -> None:
+        """Background task that updates gradient every 2 seconds based on route position."""
+        try:
+            while True:
+                # Get current distance from state
+                metrics = await self.state.get_metrics()
+                distance_m = metrics.distance_m
+
+                # Check if mode is still SIM
+                if metrics.mode != "SIM":
+                    break
+
+                # Calculate grade at current position
+                target_grade = self._calculate_grade(distance_m)
+                self.target_gradient = target_grade
+
+                # Smooth the transition
+                smoothed_grade = self._smooth_gradient(
+                    target=self.target_gradient,
+                    current=self.last_gradient,
+                    max_change=1.0  # Max 1% change per 2 seconds
+                )
+                self.last_gradient = smoothed_grade
+
+                # Send to trainer
+                ble_client = await self.state.get_ble_client()
+                if ble_client and ble_client.is_connected:
+                    await ble_client.set_gradient(smoothed_grade)
+                    # Also update state for display - preserve mode!
+                    await self.state.update_metrics(grade_pct=smoothed_grade, mode="SIM")
+
+                # Wait 2 seconds before next update
+                await asyncio.sleep(2.0)
+
+        except asyncio.CancelledError:
+            pass

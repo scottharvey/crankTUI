@@ -20,10 +20,86 @@ DEMO_MODE = False
 DEMO_SPEED = 25.0  # Default demo speed in km/h
 
 
+class ConfirmQuitScreen(ModalScreen[bool]):
+    """Modal dialog to confirm quitting the app."""
+
+    BINDINGS = [
+        ("escape", "cancel", "Cancel"),
+        ("left", "navigate_left", "Left"),
+        ("right", "navigate_right", "Right"),
+    ]
+
+    CSS = """
+    ConfirmQuitScreen {
+        align: center middle;
+    }
+
+    #dialog {
+        width: 50;
+        height: 9;
+        border: round white;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #question {
+        width: 100%;
+        height: auto;
+        content-align: center middle;
+        margin-bottom: 1;
+    }
+
+    #buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+    }
+
+    Button {
+        margin: 0 1;
+        background: transparent;
+        border: round $surface;
+        color: white;
+    }
+
+    Button:focus {
+        border: round white;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        """Create dialog widgets."""
+        with Container(id="dialog"):
+            yield Label("Quit crankTUI?", id="question")
+            with Horizontal(id="buttons"):
+                yield Button("No", id="no")
+                yield Button("Yes", id="yes")
+
+    def action_cancel(self) -> None:
+        """Cancel the quit action."""
+        self.dismiss(False)
+
+    def action_navigate_left(self) -> None:
+        """Navigate to No button (left side)."""
+        self.query_one("#no", Button).focus()
+
+    def action_navigate_right(self) -> None:
+        """Navigate to Yes button (right side)."""
+        self.query_one("#yes", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button press."""
+        if event.button.id == "yes":
+            self.dismiss(True)
+        else:
+            self.dismiss(False)
+
+
 class ConfirmBackScreen(ModalScreen[bool]):
     """Modal dialog to confirm going back to route selection."""
 
     BINDINGS = [
+        ("escape", "cancel", "Cancel"),
         ("left", "navigate_left", "Left"),
         ("right", "navigate_right", "Right"),
     ]
@@ -74,6 +150,10 @@ class ConfirmBackScreen(ModalScreen[bool]):
                 yield Button("No", id="no")
                 yield Button("Yes", id="yes")
 
+    def action_cancel(self) -> None:
+        """Cancel going back."""
+        self.dismiss(False)
+
     def action_navigate_left(self) -> None:
         """Navigate to No button (left side)."""
         self.query_one("#no", Button).focus()
@@ -106,6 +186,15 @@ class CrankTUI(App):
         """Create child widgets for the app."""
         # Empty main screen - we always show screens on top
         yield Static("")
+
+    def action_quit(self) -> None:
+        """Override quit action to show confirmation dialog."""
+        self.push_screen(ConfirmQuitScreen(), self.handle_quit_confirmation)
+
+    def handle_quit_confirmation(self, confirmed: bool) -> None:
+        """Handle the quit confirmation result."""
+        if confirmed:
+            self.exit()
 
     def on_mount(self) -> None:
         """Handle app mount - show route selection."""
@@ -186,7 +275,7 @@ class CrankTUI(App):
             power_w=data['power_w'],
             cadence_rpm=data['cadence_rpm'],
             speed_kmh=speed_kmh,
-            mode="LIVE"
+            # Don't override mode - let user's mode selection persist (LIVE/SIM/etc)
         )
 
     def on_route_selected(self, route: Route | None) -> None:

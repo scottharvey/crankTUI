@@ -82,6 +82,10 @@ class RideState:
             # Update all provided metrics
             for key, value in kwargs.items():
                 if hasattr(self._metrics, key):
+                    # Debug log mode changes
+                    if key == "mode" and value != self._metrics.mode:
+                        from cranktui.ble.client import debug_log
+                        debug_log(f"MODE CHANGE: '{self._metrics.mode}' → '{value}'")
                     setattr(self._metrics, key, value)
 
             # Track last update time for distance integration
