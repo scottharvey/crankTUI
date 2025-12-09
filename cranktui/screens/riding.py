@@ -407,8 +407,18 @@ class RidingScreen(Screen):
 
     async def _start_sim_mode(self) -> None:
         """Start SIM mode - automatic grade-based resistance control."""
+        from cranktui.ble.client import debug_log
+        from cranktui.config import get_bike_weight_kg, get_rider_weight_kg
+
         if self.sim_task is not None:
             return  # Already running
+
+        # Send rider characteristics to trainer for realistic simulation
+        ble_client = await self.state.get_ble_client()
+        if ble_client and ble_client.is_connected:
+            total_weight = get_rider_weight_kg() + get_bike_weight_kg()
+            debug_log(f"Starting SIM mode, sending rider characteristics: {total_weight:.1f}kg")
+            await ble_client.set_rider_characteristics(total_weight)
 
         self.last_gradient = 0.0
         self.target_gradient = 0.0
@@ -428,11 +438,15 @@ class RidingScreen(Screen):
 
     async def _sim_mode_loop(self) -> None:
         """Background task that updates gradient every 2 seconds based on route position."""
+        from cranktui.ble.client import debug_log
+
         try:
             while True:
                 # Get current distance from state
                 metrics = await self.state.get_metrics()
                 distance_m = metrics.distance_m
+                speed_kmh = metrics.speed_kmh
+                power_w = metrics.power_w
 
                 # Check if mode is still SIM
                 if metrics.mode != "SIM":
@@ -442,6 +456,9 @@ class RidingScreen(Screen):
                 target_grade = self._calculate_grade(distance_m)
                 self.target_gradient = target_grade
 
+                # Get elevation data for logging
+                current_elevation = self.route.get_elevation_at_distance(distance_m)
+
                 # Smooth the transition
                 smoothed_grade = self._smooth_gradient(
                     target=self.target_gradient,
@@ -449,6 +466,15 @@ class RidingScreen(Screen):
                     max_change=1.0  # Max 1% change per 2 seconds
                 )
                 self.last_gradient = smoothed_grade
+
+                # Calculate expected power for comparison
+                from cranktui.config import get_bike_weight_kg, get_rider_weight_kg
+                total_weight = get_rider_weight_kg() + get_bike_weight_kg()
+                speed_ms = speed_kmh / 3.6
+                gravity_power = total_weight * 9.8 * (smoothed_grade / 100.0) * speed_ms if speed_ms > 0 else 0
+
+                # Log current state
+                debug_log(f"SIM: dist={distance_m:.0f}m, elev={current_elevation:.1f}m, grade_target={target_grade:.2f}%, grade_smooth={smoothed_grade:.2f}%, speed={speed_kmh:.1f}km/h, power={power_w:.0f}W (gravity_only={gravity_power:.0f}W, weight={total_weight:.0f}kg)")
 
                 # Send to trainer
                 ble_client = await self.state.get_ble_client()

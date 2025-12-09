@@ -435,7 +435,7 @@ class BLEClient:
         debug_log(f"Set gradient {grade_percent:.1f}% (encoded={encoded_value}): {command.hex()}")
         return await self.write_characteristic(WAHOO_TRAINER_CONTROL_UUID, command, response=True)
 
-    async def set_rider_characteristics(self, weight_kg: float, crr: float = 0.004, cda: float = 0.4) -> bool:
+    async def set_rider_characteristics(self, weight_kg: float, crr: float = 0.005, cda: float = 0.55) -> bool:
         """Set rider characteristics for realistic simulation.
 
         Uses Wahoo's rider characteristics command (0x43).
@@ -443,8 +443,8 @@ class BLEClient:
 
         Args:
             weight_kg: Total weight (rider + bike) in kg (40-150)
-            crr: Coefficient of rolling resistance (0.002-0.010, default 0.004)
-            cda: Coefficient of drag area in m² (0.2-0.6, default 0.4)
+            crr: Coefficient of rolling resistance (0.002-0.010, default 0.005 for typical road tires)
+            cda: Coefficient of drag area in m² (0.2-0.6, default 0.55 for upright road position)
 
         Returns:
             True if command sent successfully
