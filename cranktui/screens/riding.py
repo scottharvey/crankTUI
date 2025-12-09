@@ -1,6 +1,7 @@
 """Riding screen for active training session."""
 
 import asyncio
+import time
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -8,6 +9,7 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen, ModalScreen
 from textual.widgets import Button, Footer, Header, Label, Static
 
+from cranktui.recorder.ride_logger import RideLogger
 from cranktui.routes.route import Route
 from cranktui.screens.devices import DevicesScreen
 from cranktui.simulation.simulator import DemoSimulator
@@ -88,12 +90,13 @@ class HelpModal(ModalScreen):
     def _build_help_text(self) -> str:
         """Build the help text content."""
         return """
-Navigation
+Ride Control
+  SPACE       Start ride / Pause ride
   ESC         Go Back
   d           Open Devices Screen
   h           Show this help
 
-Mode Control
+Mode Control (while riding)
   m           Toggle Mode (SIM → LIVE → DEMO)
               SIM:  Automatic grade-following (default)
               LIVE: Manual control with trainer
@@ -114,6 +117,78 @@ Manual Resistance (LIVE mode)
 """
 
 
+class PauseRideModal(ModalScreen[str]):
+    """Modal dialog shown when ride is paused."""
+
+    BINDINGS = [
+        ("escape", "resume", "Resume"),
+    ]
+
+    CSS = """
+    PauseRideModal {
+        align: center middle;
+    }
+
+    #dialog {
+        width: 60;
+        height: 13;
+        border: round white;
+        background: $surface;
+        padding: 1 2;
+    }
+
+    #question {
+        width: 100%;
+        height: auto;
+        content-align: center middle;
+        margin-bottom: 1;
+    }
+
+    #buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+    }
+
+    Button {
+        margin: 0 1;
+        background: transparent;
+        border: round $surface;
+        color: white;
+    }
+
+    Button:focus {
+        border: round white;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        """Create dialog widgets."""
+        with Container(id="dialog"):
+            yield Label("Ride Paused", id="question")
+            with Horizontal(id="buttons"):
+                yield Button("Continue", id="continue")
+                yield Button("Save & Exit", id="save")
+                yield Button("Exit (No Save)", id="discard")
+
+    def on_mount(self) -> None:
+        """Focus the Continue button by default."""
+        self.query_one("#continue", Button).focus()
+
+    def action_resume(self) -> None:
+        """Resume riding (escape key)."""
+        self.dismiss("continue")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button press."""
+        if event.button.id == "continue":
+            self.dismiss("continue")
+        elif event.button.id == "save":
+            self.dismiss("save")
+        elif event.button.id == "discard":
+            self.dismiss("discard")
+
+
 class RidingScreen(Screen):
     """Main riding screen with elevation profile and stats."""
 
@@ -122,6 +197,7 @@ class RidingScreen(Screen):
         ("d", "show_devices", "Devices"),
         ("m", "toggle_mode", "Mode"),
         ("h", "show_help", "Help"),
+        ("space", "stop_ride", "Start/Pause"),
         # Hidden bindings - functional but not shown in footer
         Binding("1", "test_resistance_low", "Test: Low Resistance", show=False),
         Binding("2", "test_resistance_med", "Test: Med Resistance", show=False),
@@ -185,6 +261,9 @@ class RidingScreen(Screen):
         self.sim_task: asyncio.Task | None = None
         self.last_gradient: float = 0.0  # For smoothing
         self.target_gradient: float = 0.0  # For smoothing
+        self.ride_logger = RideLogger(route, self.state)
+        self.ride_state: str = "not_started"  # "not_started", "riding", "paused"
+        self.pause_start_time: float | None = None  # Track when pause started
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -201,27 +280,20 @@ class RidingScreen(Screen):
         yield Footer()
 
     async def on_mount(self) -> None:
-        """Handle mount - start simulation only if in demo mode."""
-        from datetime import datetime
-        from cranktui.app import DEMO_MODE
-
-        ble_client = await self.state.get_ble_client()
-
-        # Set start time for the ride
-        await self.state.update_metrics(start_time=datetime.now())
-
-        # Start demo simulator if --demo flag was passed OR no BLE device connected
-        if DEMO_MODE or not ble_client or not ble_client.is_connected:
-            await self.state.update_metrics(mode="DEMO")
-            await self.simulator.start()
-        else:
-            # Start in SIM mode by default when connected to trainer
-            await self._start_sim_mode()
+        """Handle mount - wait for user to start ride."""
+        # Don't start anything yet - wait for user to press space
+        pass
 
     async def on_unmount(self) -> None:
         """Handle unmount - stop simulation and reset state."""
         await self.simulator.stop()
         await self._stop_sim_mode()
+
+        # Stop recording if still active
+        metrics = await self.state.get_metrics()
+        if metrics.is_recording:
+            await self.ride_logger.stop_recording()
+
         # Reset state for next ride (but keep BLE client)
         ble_client = await self.state.get_ble_client()
         await self.state.reset()
@@ -238,6 +310,134 @@ class RidingScreen(Screen):
     def action_show_help(self) -> None:
         """Show the help modal."""
         self.app.push_screen(HelpModal())
+
+    def action_stop_ride(self) -> None:
+        """Handle space bar - start/pause the ride."""
+        if self.ride_state == "not_started":
+            # Start the ride
+            self.run_worker(self._start_ride())
+        elif self.ride_state == "riding":
+            # Pause the ride
+            self.run_worker(self._pause_ride())
+
+    async def _start_ride(self) -> None:
+        """Start the ride and recording."""
+        from datetime import datetime
+        from cranktui.app import DEMO_MODE
+        from cranktui.ble.client import debug_log
+
+        self.ride_state = "riding"
+
+        ble_client = await self.state.get_ble_client()
+
+        # Set start time for the ride
+        await self.state.update_metrics(start_time=datetime.now())
+
+        # Start recording
+        filepath = await self.ride_logger.start_recording()
+        debug_log(f"Started recording ride to: {filepath}")
+
+        # Start demo simulator if --demo flag was passed OR no BLE device connected
+        if DEMO_MODE or not ble_client or not ble_client.is_connected:
+            await self.state.update_metrics(mode="DEMO")
+            await self.simulator.start()
+        else:
+            # Start in SIM mode by default when connected to trainer
+            await self._start_sim_mode()
+
+        self.notify("Ride started!")
+
+    async def _pause_ride(self) -> None:
+        """Pause the ride - stop simulator/SIM mode."""
+        self.ride_state = "paused"
+
+        # Record when pause started (for elapsed time adjustment)
+        from datetime import datetime
+        self.pause_start_time = time.time()
+
+        # Pause logging
+        self.ride_logger.pause()
+
+        # Get current mode to know what to pause
+        metrics = await self.state.get_metrics()
+
+        # Stop the appropriate background task
+        if metrics.mode == "DEMO":
+            await self.simulator.stop()
+        elif metrics.mode == "SIM":
+            await self._stop_sim_mode()
+
+        # Show pause modal
+        self.app.push_screen(PauseRideModal(), self.handle_pause_choice)
+
+    async def _resume_ride(self) -> None:
+        """Resume the ride - restart simulator/SIM mode."""
+        from datetime import datetime, timedelta
+
+        self.ride_state = "riding"
+
+        # Adjust start_time to account for pause duration
+        # This keeps elapsed_time from advancing during pause
+        if self.pause_start_time is not None:
+            pause_duration = time.time() - self.pause_start_time
+            metrics = await self.state.get_metrics()
+            if metrics.start_time is not None:
+                # Push start time forward by the pause duration
+                new_start_time = metrics.start_time + timedelta(seconds=pause_duration)
+                await self.state.update_metrics(start_time=new_start_time)
+            self.pause_start_time = None
+
+        # Resume logging
+        self.ride_logger.resume()
+
+        # Get current mode to know what to resume
+        metrics = await self.state.get_metrics()
+
+        # Restart the appropriate background task
+        if metrics.mode == "DEMO":
+            # Don't reset state - just restart simulation loop
+            self.simulator.running = True
+            self.simulator.start_time = time.time() - metrics.elapsed_time_s
+            self.simulator.task = asyncio.create_task(self.simulator._simulation_loop())
+        elif metrics.mode == "SIM":
+            await self._start_sim_mode()
+
+        self.notify("Resumed")
+
+    def handle_pause_choice(self, choice: str) -> None:
+        """Handle the pause modal choice.
+
+        Args:
+            choice: "continue", "save", or "discard"
+        """
+        if choice == "continue":
+            # Resume riding
+            self.run_worker(self._resume_ride())
+        elif choice == "save":
+            # Save and exit
+            self.run_worker(self._finish_ride(save=True))
+        elif choice == "discard":
+            # Discard and exit
+            self.run_worker(self._finish_ride(save=False))
+
+    async def _finish_ride(self, save: bool) -> None:
+        """Finish the ride and save or discard.
+
+        Args:
+            save: True to save the ride, False to discard
+        """
+        # Stop recording
+        await self.ride_logger.stop_recording()
+
+        if save:
+            self.notify("Ride saved!")
+        else:
+            # Discard the ride file
+            self.ride_logger.discard_ride()
+            self.notify("Ride discarded")
+
+        # Go back to route selection
+        self.dismiss()
 
     def action_toggle_mode(self) -> None:
         """Toggle between Demo and Live modes."""
