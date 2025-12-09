@@ -263,7 +263,6 @@ class RidingScreen(Screen):
         self.target_gradient: float = 0.0  # For smoothing
         self.ride_logger = RideLogger(route, self.state)
         self.ride_state: str = "not_started"  # "not_started", "riding", "paused"
-        self.pause_start_time: float | None = None  # Track when pause started
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -348,12 +347,12 @@ class RidingScreen(Screen):
         self.notify("Ride started!")
 
     async def _pause_ride(self) -> None:
-        """Pause the ride - stop simulator/SIM mode."""
-        self.ride_state = "paused"
+        """Pause the ride - stop simulator/SIM mode.
 
-        # Record when pause started (for elapsed time adjustment)
-        from datetime import datetime
-        self.pause_start_time = time.time()
+        elapsed_time_s automatically stops advancing because we stop
+        calling update_metrics() when the simulator/SIM mode is stopped.
+        """
+        self.ride_state = "paused"
 
         # Pause logging
         self.ride_logger.pause()
@@ -372,20 +371,7 @@ class RidingScreen(Screen):
 
     async def _resume_ride(self) -> None:
         """Resume the ride - restart simulator/SIM mode."""
-        from datetime import datetime, timedelta
-
         self.ride_state = "riding"
-
-        # Adjust start_time to account for pause duration
-        # This keeps elapsed_time from advancing during pause
-        if self.pause_start_time is not None:
-            pause_duration = time.time() - self.pause_start_time
-            metrics = await self.state.get_metrics()
-            if metrics.start_time is not None:
-                # Push start time forward by the pause duration
-                new_start_time = metrics.start_time + timedelta(seconds=pause_duration)
-                await self.state.update_metrics(start_time=new_start_time)
-            self.pause_start_time = None
 
         # Resume logging
         self.ride_logger.resume()
@@ -395,7 +381,7 @@ class RidingScreen(Screen):
 
         # Restart the appropriate background task
         if metrics.mode == "DEMO":
-            # Don't reset state - just restart simulation loop
+            # Don't reset state - just restart simulation loop from current elapsed time
             self.simulator.running = True
             self.simulator.start_time = time.time() - metrics.elapsed_time_s
             self.simulator.task = asyncio.create_task(self.simulator._simulation_loop())
