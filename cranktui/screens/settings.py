@@ -27,7 +27,7 @@ class SettingsScreen(ModalScreen[None]):
         width: 60;
         height: auto;
         border: round white;
-        background: $surface;
+        background: $background 60%;
         padding: 1 2;
     }
 

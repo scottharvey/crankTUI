@@ -38,7 +38,7 @@ class ConfirmQuitScreen(ModalScreen[bool]):
         width: 50;
         height: 9;
         border: round white;
-        background: $surface;
+        background: $background 60%;
         padding: 1 2;
     }
 
@@ -113,7 +113,7 @@ class ConfirmBackScreen(ModalScreen[bool]):
         width: 50;
         height: 9;
         border: round white;
-        background: $surface;
+        background: $background 60%;
         padding: 1 2;
     }
 

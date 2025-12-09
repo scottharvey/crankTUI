@@ -37,7 +37,7 @@ class HelpModal(ModalScreen):
         height: auto;
         max-height: 90%;
         border: round white;
-        background: $surface;
+        background: $background 60%;
         padding: 1;
     }
 
@@ -133,7 +133,7 @@ class PauseRideModal(ModalScreen[str]):
         width: 60;
         height: 13;
         border: round white;
-        background: $surface;
+        background: $background 60%;
         padding: 1 2;
     }
 

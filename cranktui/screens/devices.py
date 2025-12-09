@@ -55,7 +55,7 @@ class DevicesScreen(ModalScreen[None]):
         width: 90%;
         height: 90%;
         border: round white;
-        background: $surface;
+        background: $background 60%;
         padding: 1;
     }
 
