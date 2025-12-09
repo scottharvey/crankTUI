@@ -42,7 +42,6 @@ class RouteSelectScreen(Screen):
 
     BINDINGS = [
         ("q", "quit", "Quit"),
-        ("escape", "app.pop_screen", "Back"),
         ("up", "navigate_up", "Up"),
         ("down", "navigate_down", "Down"),
         ("enter", "select_route", "Select"),
