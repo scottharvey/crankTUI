@@ -94,10 +94,15 @@ Navigation
   h           Show this help
 
 Mode Control
-  m           Toggle Mode (DEMO → LIVE → SIM)
-              DEMO: Simulated ride data
+  m           Toggle Mode (SIM → LIVE → DEMO)
+              SIM:  Automatic grade-following (default)
               LIVE: Manual control with trainer
-              SIM:  Automatic grade-following
+              DEMO: Simulated ride data
+
+SIM Mode Resistance Scaling
+  ↑           Increase resistance +10%
+  ↓           Decrease resistance -10%
+              Range: 30% to 200%
 
 Manual Resistance (LIVE mode)
   1, 2, 3     Resistance level (Low/Med/High)
@@ -126,6 +131,8 @@ class RidingScreen(Screen):
         Binding("7", "test_gradient_gentle", "Test: Gentle (3%)", show=False),
         Binding("8", "test_gradient_medium", "Test: Medium (7%)", show=False),
         Binding("9", "test_gradient_steep", "Test: Steep (12%)", show=False),
+        Binding("up", "increase_resistance", "Increase Resistance", show=False),
+        Binding("down", "decrease_resistance", "Decrease Resistance", show=False),
     ]
 
     CSS = """
@@ -208,7 +215,8 @@ class RidingScreen(Screen):
             await self.state.update_metrics(mode="DEMO")
             await self.simulator.start()
         else:
-            await self.state.update_metrics(mode="LIVE")
+            # Start in SIM mode by default when connected to trainer
+            await self._start_sim_mode()
 
     async def on_unmount(self) -> None:
         """Handle unmount - stop simulation and reset state."""
@@ -238,7 +246,7 @@ class RidingScreen(Screen):
     async def _toggle_mode(self) -> None:
         """Async toggle mode implementation.
 
-        Cycles through modes: DEMO → LIVE → SIM → DEMO
+        Cycles through modes: SIM → LIVE → DEMO → SIM
         """
         from cranktui.app import DEMO_MODE
 
@@ -250,34 +258,39 @@ class RidingScreen(Screen):
         metrics = await self.state.get_metrics()
         ble_client = await self.state.get_ble_client()
 
-        if metrics.mode == "DEMO":
-            # Try to switch to LIVE mode
+        if metrics.mode == "SIM":
+            # Switch to LIVE mode (manual control)
             if ble_client and ble_client.is_connected:
-                # Stop demo simulator
-                await self.simulator.stop()
+                await self._stop_sim_mode()
                 await self.state.update_metrics(mode="LIVE")
                 self.notify("Switched to LIVE mode (manual control)")
             else:
-                self.notify("No device connected - cannot switch modes")
+                self.notify("No device connected")
         elif metrics.mode == "LIVE":
-            # Switch to SIM mode (automatic grade-following)
+            # Switch to DEMO mode
+            await self.state.update_metrics(mode="DEMO")
+            await self.simulator.start()
+            self.notify("Switched to DEMO mode")
+        elif metrics.mode == "DEMO":
+            # Try to switch back to SIM mode
             if ble_client and ble_client.is_connected:
+                # Stop demo simulator
+                await self.simulator.stop()
                 await self._start_sim_mode()
                 self.notify("Switched to SIM mode (auto grade-following)")
             else:
-                self.notify("No device connected")
-        elif metrics.mode == "SIM":
-            # Switch back to DEMO mode
-            await self._stop_sim_mode()
-            await self.state.update_metrics(mode="DEMO")
-            await self.simulator.start()
-            self.notify("Switched to DEMO mode")
+                self.notify("No device connected - cannot switch modes")
         else:
-            # Unknown mode, reset to DEMO
-            await self._stop_sim_mode()
-            await self.state.update_metrics(mode="DEMO")
-            await self.simulator.start()
-            self.notify("Switched to DEMO mode")
+            # Unknown mode, reset to SIM if connected, otherwise DEMO
+            if ble_client and ble_client.is_connected:
+                await self._stop_sim_mode()
+                await self._start_sim_mode()
+                self.notify("Switched to SIM mode (auto grade-following)")
+            else:
+                await self._stop_sim_mode()
+                await self.state.update_metrics(mode="DEMO")
+                await self.simulator.start()
+                self.notify("Switched to DEMO mode")
 
     def action_test_resistance_low(self) -> None:
         """Test setting low resistance (20%)."""
@@ -310,6 +323,37 @@ class RidingScreen(Screen):
     def action_test_gradient_steep(self) -> None:
         """Test setting gradient to steep climb (12%)."""
         self.run_worker(self._test_gradient(12.0))
+
+    def action_increase_resistance(self) -> None:
+        """Increase resistance scaling by 10%."""
+        self.run_worker(self._adjust_resistance_scale(0.1))
+
+    def action_decrease_resistance(self) -> None:
+        """Decrease resistance scaling by 10%."""
+        self.run_worker(self._adjust_resistance_scale(-0.1))
+
+    async def _adjust_resistance_scale(self, delta: float) -> None:
+        """Adjust resistance scaling factor.
+
+        Args:
+            delta: Change in scaling factor (e.g., +0.1 or -0.1)
+        """
+        metrics = await self.state.get_metrics()
+
+        # Only works in SIM mode
+        if metrics.mode != "SIM":
+            self.notify("Resistance scaling only works in SIM mode")
+            return
+
+        # Calculate new scale (clamp between 0.3 and 2.0)
+        new_scale = max(0.3, min(2.0, metrics.resistance_scale + delta))
+
+        # Update state
+        await self.state.update_metrics(resistance_scale=new_scale)
+
+        # Notify user
+        percentage = int(new_scale * 100)
+        self.notify(f"Resistance: {percentage}%")
 
     async def _test_resistance(self, level: int) -> None:
         """Test resistance command."""
@@ -447,6 +491,7 @@ class RidingScreen(Screen):
                 distance_m = metrics.distance_m
                 speed_kmh = metrics.speed_kmh
                 power_w = metrics.power_w
+                resistance_scale = metrics.resistance_scale
 
                 # Check if mode is still SIM
                 if metrics.mode != "SIM":
@@ -467,21 +512,25 @@ class RidingScreen(Screen):
                 )
                 self.last_gradient = smoothed_grade
 
+                # Apply resistance scaling
+                scaled_grade = smoothed_grade * resistance_scale
+
                 # Calculate expected power for comparison
                 from cranktui.config import get_bike_weight_kg, get_rider_weight_kg
                 total_weight = get_rider_weight_kg() + get_bike_weight_kg()
                 speed_ms = speed_kmh / 3.6
-                gravity_power = total_weight * 9.8 * (smoothed_grade / 100.0) * speed_ms if speed_ms > 0 else 0
+                gravity_power = total_weight * 9.8 * (scaled_grade / 100.0) * speed_ms if speed_ms > 0 else 0
 
                 # Log current state
-                debug_log(f"SIM: dist={distance_m:.0f}m, elev={current_elevation:.1f}m, grade_target={target_grade:.2f}%, grade_smooth={smoothed_grade:.2f}%, speed={speed_kmh:.1f}km/h, power={power_w:.0f}W (gravity_only={gravity_power:.0f}W, weight={total_weight:.0f}kg)")
+                scale_str = f", scale={int(resistance_scale*100)}%" if resistance_scale != 1.0 else ""
+                debug_log(f"SIM: dist={distance_m:.0f}m, elev={current_elevation:.1f}m, grade_target={target_grade:.2f}%, grade_smooth={smoothed_grade:.2f}%{scale_str}, speed={speed_kmh:.1f}km/h, power={power_w:.0f}W (gravity_only={gravity_power:.0f}W, weight={total_weight:.0f}kg)")
 
                 # Send to trainer
                 ble_client = await self.state.get_ble_client()
                 if ble_client and ble_client.is_connected:
-                    await ble_client.set_gradient(smoothed_grade)
+                    await ble_client.set_gradient(scaled_grade)
                     # Also update state for display - preserve mode!
-                    await self.state.update_metrics(grade_pct=smoothed_grade, mode="SIM")
+                    await self.state.update_metrics(grade_pct=scaled_grade, mode="SIM")
 
                 # Wait 2 seconds before next update
                 await asyncio.sleep(2.0)

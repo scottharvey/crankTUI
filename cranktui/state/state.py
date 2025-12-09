@@ -27,6 +27,7 @@ class RideMetrics:
     start_time: datetime | None = None
     is_recording: bool = False
     mode: str = "DEMO"  # "DEMO", "LIVE", "ERG", or "SIM"
+    resistance_scale: float = 1.0  # Scaling factor for SIM mode (0.3 to 2.0)
 
 
 class RideState:
@@ -53,6 +54,7 @@ class RideState:
                 start_time=self._metrics.start_time,
                 is_recording=self._metrics.is_recording,
                 mode=self._metrics.mode,
+                resistance_scale=self._metrics.resistance_scale,
             )
 
     async def update_metrics(self, **kwargs) -> None:

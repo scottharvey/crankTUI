@@ -46,9 +46,14 @@ class StatsPanel(Widget):
         distance_km = metrics.distance_m / 1000
         distance_str = f"{distance_km:.2f} km"
 
-        # Format stats
+        # Format stats - build mode line with optional scaling
+        mode_line = f"Mode: {metrics.mode}"
+        if metrics.mode == "SIM" and metrics.resistance_scale != 1.0:
+            scale_pct = int(metrics.resistance_scale * 100)
+            mode_line += f" ({scale_pct}%)"
+
         content = "\n".join([
-            f"Mode: {metrics.mode}",
+            mode_line,
             "",
             f"Time: {time_str}",
             f"Distance: {distance_str}",
