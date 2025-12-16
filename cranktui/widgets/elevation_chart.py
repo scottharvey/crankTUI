@@ -21,6 +21,7 @@ class ElevationChart(Widget):
 
     # Reactive property for current distance
     current_distance_m: reactive[float] = reactive(0.0)
+    ghost_distance_m: reactive[float] = reactive(0.0)
 
     def __init__(self, route: Route | None = None, **kwargs):
         super().__init__(**kwargs)
@@ -124,6 +125,14 @@ class ElevationChart(Widget):
             finish_x = int(progress_in_window * width)
             finish_x = max(0, min(finish_x, width - 1))
 
+        # Calculate ghost position
+        ghost_x = None
+        if self.ghost_distance_m > 0 and window_start_m <= self.ghost_distance_m <= window_end_m:
+            # Ghost is visible in this window
+            progress_in_window = (self.ghost_distance_m - window_start_m) / VIEWPORT_TOTAL_M
+            ghost_x = int(progress_in_window * width)
+            ghost_x = max(0, min(ghost_x, width - 1))
+
         # Build the chart from top to bottom using Rich Text for styling
         chart_text = Text()
 
@@ -134,15 +143,19 @@ class ElevationChart(Widget):
 
                 # Determine styling based on special columns
                 is_rider_column = (rider_x is not None and x == rider_x)
+                is_ghost_column = (ghost_x is not None and x == ghost_x)
                 is_start_column = (start_x is not None and x == start_x)
                 is_finish_column = (finish_x is not None and x == finish_x)
 
                 if is_finish_column:
                     style = "red"
-                elif is_rider_column:
-                    style = "green"
                 elif is_start_column:
                     style = "dark_green"
+                elif is_rider_column:
+                    style = "green"
+                elif is_ghost_column and not is_rider_column:
+                    # Ghost extends to top only when not at rider position
+                    style = "orange1"
                 else:
                     style = "white"
 
@@ -176,6 +189,21 @@ class ElevationChart(Widget):
             # Add newline after each row (except the last)
             if y < chart_height - 1:
                 chart_text.append("\n")
+
+        # Add full row at bottom (with start and finish lines extended, rider, and ghost)
+        chart_text.append("\n")
+        for x in range(width):
+            if finish_x is not None and x == finish_x:
+                chart_text.append(self.FULL_BLOCK, style="red")
+            elif start_x is not None and x == start_x:
+                chart_text.append(self.FULL_BLOCK, style="dark_green")
+            elif x == rider_x and (ghost_x is None or x != ghost_x):
+                # Rider extends to bottom row when ghost is not at same position
+                chart_text.append(self.FULL_BLOCK, style="green")
+            elif ghost_x is not None and x == ghost_x:
+                chart_text.append(self.FULL_BLOCK, style="orange1")
+            else:
+                chart_text.append(self.FULL_BLOCK, style="white")
 
         # Add distance markers at the bottom (show visible window range)
         chart_text.append("\n")

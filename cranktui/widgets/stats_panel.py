@@ -67,6 +67,16 @@ class StatsPanel(Widget):
         if metrics.heart_rate_bpm > 0:
             content += f"\nHeart Rate: {metrics.heart_rate_bpm:.0f} bpm"
 
+        # Show ghost delta if ghost is active
+        if metrics.ghost_distance_m > 0:
+            delta_m = metrics.distance_m - metrics.ghost_distance_m
+            if delta_m > 0:
+                content += f"\nGhost: +{delta_m:.0f}m"
+            elif delta_m < 0:
+                content += f"\nGhost: {delta_m:.0f}m"
+            else:
+                content += f"\nGhost: Even"
+
         if metrics.is_recording:
             content += "\n\n● Recording"
 

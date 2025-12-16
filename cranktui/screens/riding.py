@@ -9,6 +9,7 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen, ModalScreen
 from textual.widgets import Button, Footer, Header, Label, Static
 
+from cranktui.recorder.ghost_loader import find_fastest_ghost, GhostRide
 from cranktui.recorder.ride_logger import RideLogger
 from cranktui.routes.route import Route
 from cranktui.screens.devices import DevicesScreen
@@ -265,6 +266,8 @@ class RidingScreen(Screen):
         self.target_gradient: float = 0.0  # For smoothing
         self.ride_logger = RideLogger(route, self.state)
         self.ride_state: str = "not_started"  # "not_started", "riding", "paused"
+        self.ghost_ride: GhostRide | None = None
+        self.ghost_task: asyncio.Task | None = None
 
     def compose(self) -> ComposeResult:
         """Create child widgets."""
@@ -289,6 +292,15 @@ class RidingScreen(Screen):
         """Handle unmount - stop simulation and reset state."""
         await self.simulator.stop()
         await self._stop_sim_mode()
+
+        # Stop ghost task if running
+        if self.ghost_task is not None:
+            self.ghost_task.cancel()
+            try:
+                await self.ghost_task
+            except asyncio.CancelledError:
+                pass
+            self.ghost_task = None
 
         # Stop recording if still active
         metrics = await self.state.get_metrics()
@@ -337,6 +349,15 @@ class RidingScreen(Screen):
         # Start recording
         filepath = await self.ride_logger.start_recording()
         debug_log(f"Started recording ride to: {filepath}")
+
+        # Load ghost ride (fastest previous ride for this route)
+        self.ghost_ride = find_fastest_ghost(self.route.name)
+        if self.ghost_ride:
+            debug_log(f"Loaded ghost: {self.ghost_ride.total_time:.1f}s, {self.ghost_ride.total_distance:.0f}m")
+            # Start ghost update task
+            self.ghost_task = asyncio.create_task(self._update_ghost_loop())
+        else:
+            debug_log("No ghost ride found for this route")
 
         # Start demo simulator if --demo flag was passed OR no BLE device connected
         if DEMO_MODE or not ble_client or not ble_client.is_connected:
@@ -636,6 +657,41 @@ class RidingScreen(Screen):
             return current + max_change
         else:
             return current - max_change
+
+    async def _update_ghost_loop(self) -> None:
+        """Background task that updates ghost position based on elapsed time."""
+        try:
+            while True:
+                if not self.ghost_ride:
+                    break
+
+                # Get current elapsed time
+                metrics = await self.state.get_metrics()
+                elapsed_time_s = metrics.elapsed_time_s
+
+                # Get ghost distance at this time
+                ghost_distance = self.ghost_ride.get_distance_at_time(elapsed_time_s)
+
+                # Debug: print ghost info every 10 updates (once per second)
+                if int(elapsed_time_s * 10) % 10 == 0:
+                    from cranktui.ble.client import debug_log
+                    debug_log(f"Ghost update: elapsed={elapsed_time_s:.1f}s, ghost_dist={ghost_distance:.1f}m")
+
+                # Update state with ghost distance (for stats panel)
+                await self.state.update_metrics(ghost_distance_m=ghost_distance)
+
+                # Update both chart widgets
+                elevation_chart = self.query_one("#elevation-panel", ElevationChart)
+                minimap = self.query_one("#minimap-panel", MinimapWidget)
+
+                elevation_chart.ghost_distance_m = ghost_distance
+                minimap.ghost_distance_m = ghost_distance
+
+                # Update every 0.1 seconds for smooth animation
+                await asyncio.sleep(0.1)
+
+        except asyncio.CancelledError:
+            pass
 
     async def _start_sim_mode(self) -> None:
         """Start SIM mode - automatic grade-based resistance control."""

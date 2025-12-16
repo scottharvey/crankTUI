@@ -28,6 +28,7 @@ class RideMetrics:
     is_recording: bool = False
     mode: str = "DEMO"  # "DEMO", "LIVE", "ERG", or "SIM"
     resistance_scale: float = 1.0  # Scaling factor for SIM mode (0.3 to 2.0)
+    ghost_distance_m: float = 0.0  # Ghost's current distance (0 if no ghost)
 
 
 class RideState:
@@ -55,6 +56,7 @@ class RideState:
                 is_recording=self._metrics.is_recording,
                 mode=self._metrics.mode,
                 resistance_scale=self._metrics.resistance_scale,
+                ghost_distance_m=self._metrics.ghost_distance_m,
             )
 
     async def update_metrics(self, **kwargs) -> None:

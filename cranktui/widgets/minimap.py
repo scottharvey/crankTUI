@@ -17,6 +17,7 @@ class MinimapWidget(Widget):
 
     # Reactive property for current distance
     current_distance_m: reactive[float] = reactive(0.0)
+    ghost_distance_m: reactive[float] = reactive(0.0)
 
     def __init__(self, route: Route | None = None, **kwargs):
         super().__init__(**kwargs)
@@ -63,14 +64,8 @@ class MinimapWidget(Widget):
             normalized = min(normalized, chart_height - 1)
             normalized_heights.append(normalized)
 
-        # Calculate rider position on minimap
+        # Calculate total distance
         total_distance_m = self.route.distance_km * 1000
-        if total_distance_m > 0:
-            progress = self.current_distance_m / total_distance_m
-            progress = max(0.0, min(1.0, progress))
-            rider_x = int(progress * (width - 1))
-        else:
-            rider_x = 0
 
         # Calculate start line position (first column of route)
         route_start_distance_m = self.route.points[0].distance_m if self.route.points else 0
@@ -89,6 +84,21 @@ class MinimapWidget(Widget):
         else:
             finish_x = width - 1
 
+        # Calculate rider position
+        if total_distance_m > 0:
+            progress = self.current_distance_m / total_distance_m
+            progress = max(0.0, min(1.0, progress))
+            rider_x = int(progress * (width - 1))
+        else:
+            rider_x = 0
+
+        # Calculate ghost position
+        ghost_x = None
+        if self.ghost_distance_m > 0 and total_distance_m > 0:
+            ghost_progress = self.ghost_distance_m / total_distance_m
+            ghost_progress = max(0.0, min(1.0, ghost_progress))
+            ghost_x = int(ghost_progress * (width - 1))
+
         # Build the chart from top to bottom using Rich Text for styling
         chart_text = Text()
 
@@ -99,21 +109,25 @@ class MinimapWidget(Widget):
 
                 # Determine styling based on special columns
                 is_rider_column = (x == rider_x)
+                is_ghost_column = (ghost_x is not None and x == ghost_x)
                 is_start_column = (x == start_x)
                 is_finish_column = (x == finish_x)
 
+                # Determine style for this cell
                 if is_finish_column:
                     style = "red"
-                elif is_rider_column:
-                    style = "green"
                 elif is_start_column:
                     style = "dark_green"
+                elif is_rider_column:
+                    style = "green"
+                elif is_ghost_column and not is_rider_column:
+                    # Ghost extends to top only when not at rider position
+                    style = "orange1"
                 else:
                     style = "white"
 
                 # Check if this position should be filled
                 if row_from_bottom <= h:
-                    # Use green color for rider's column
                     chart_text.append(self.FULL_BLOCK, style=style)
                 else:
                     # Above the elevation - empty
@@ -122,6 +136,21 @@ class MinimapWidget(Widget):
             # Add newline after each row
             if y < chart_height - 1:
                 chart_text.append("\n")
+
+        # Add full row at bottom (with start and finish lines extended, rider, and ghost)
+        chart_text.append("\n")
+        for x in range(width):
+            if x == finish_x:
+                chart_text.append(self.FULL_BLOCK, style="red")
+            elif x == start_x:
+                chart_text.append(self.FULL_BLOCK, style="dark_green")
+            elif x == rider_x and (ghost_x is None or x != ghost_x):
+                # Rider extends to bottom row when ghost is not at same position
+                chart_text.append(self.FULL_BLOCK, style="green")
+            elif ghost_x is not None and x == ghost_x:
+                chart_text.append(self.FULL_BLOCK, style="orange1")
+            else:
+                chart_text.append(self.FULL_BLOCK, style="white")
 
         # Add distance markers at the bottom
         chart_text.append("\n")
