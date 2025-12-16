@@ -112,19 +112,19 @@ def load_ghost_ride(csv_path: Path) -> GhostRide | None:
         return None
 
 
-def find_fastest_ghost(route_name: str) -> GhostRide | None:
-    """Find the fastest previous ride for a given route.
+def load_all_ghosts(route_name: str) -> list[tuple[Path, GhostRide]]:
+    """Load all valid ghost rides for a route, sorted by fastest first.
 
     Args:
         route_name: Name of the route (used in CSV filename)
 
     Returns:
-        GhostRide object of the fastest ride, or None if no rides found
+        List of (filepath, GhostRide) tuples, sorted by total_time ascending (fastest first)
     """
     rides_dir = Path.home() / ".local" / "share" / "cranktui" / "rides"
 
     if not rides_dir.exists():
-        return None
+        return []
 
     # Sanitize route name to match filename format
     safe_route_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in route_name)
@@ -135,17 +135,35 @@ def find_fastest_ghost(route_name: str) -> GhostRide | None:
     matching_files = list(rides_dir.glob(pattern))
 
     if not matching_files:
-        return None
+        return []
 
-    # Load all rides and find the fastest (shortest total time)
+    # Load all valid rides
     # Only consider rides with at least 5 seconds of data and some distance traveled
-    fastest_ride = None
-    fastest_time = float('inf')
+    valid_ghosts = []
 
     for csv_path in matching_files:
         ghost = load_ghost_ride(csv_path)
-        if ghost and ghost.total_time > 5.0 and ghost.total_distance > 10.0 and ghost.total_time < fastest_time:
-            fastest_ride = ghost
-            fastest_time = ghost.total_time
+        if ghost and ghost.total_time > 5.0 and ghost.total_distance > 10.0:
+            valid_ghosts.append((csv_path, ghost))
 
-    return fastest_ride
+    # Sort by total_time (fastest first)
+    valid_ghosts.sort(key=lambda x: x[1].total_time)
+
+    return valid_ghosts
+
+
+def find_fastest_ghost(route_name: str) -> GhostRide | None:
+    """Find the fastest previous ride for a given route.
+
+    Args:
+        route_name: Name of the route (used in CSV filename)
+
+    Returns:
+        GhostRide object of the fastest ride, or None if no rides found
+    """
+    all_ghosts = load_all_ghosts(route_name)
+    if not all_ghosts:
+        return None
+
+    # Return the fastest (first in sorted list)
+    return all_ghosts[0][1]

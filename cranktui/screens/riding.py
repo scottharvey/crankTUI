@@ -2,14 +2,15 @@
 
 import asyncio
 import time
+from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen, ModalScreen
 from textual.widgets import Button, Footer, Header, Label, Static
 
-from cranktui.recorder.ghost_loader import find_fastest_ghost, GhostRide
+from cranktui.recorder.ghost_loader import find_fastest_ghost, load_all_ghosts, load_ghost_ride, GhostRide
 from cranktui.recorder.ride_logger import RideLogger
 from cranktui.routes.route import Route
 from cranktui.screens.devices import DevicesScreen
@@ -96,6 +97,7 @@ Ride Control
   SPACE       Start ride / Pause ride
   ESC         Go Back
   d           Open Devices Screen
+  g           Select Ghost Rider (before ride starts)
   h           Show this help
 
 Mode Control (while riding)
@@ -117,6 +119,243 @@ Manual Resistance (LIVE mode)
   8           Medium climb (7%)
   9           Steep climb (12%)
 """
+
+
+def parse_ride_datetime(filepath: Path) -> str:
+    """Extract formatted date/time from ride filename.
+
+    Example: '2025-12-16_162415_Alpine_Challenge.csv' → '2025-12-16 16:24'
+    """
+    filename = filepath.stem  # Remove .csv
+    datetime_str = filename[:15]  # 'YYYY-MM-DD_HHMM'
+    date_part = datetime_str[:10]  # 'YYYY-MM-DD'
+    time_part = datetime_str[11:13] + ":" + datetime_str[13:15]  # 'HH:MM'
+    return f"{date_part} {time_part}"
+
+
+class GhostItem(Static):
+    """Widget representing a single ghost ride option."""
+
+    def __init__(self, filepath: Path | None, ghost_ride: GhostRide | None, date_str: str, is_current: bool):
+        super().__init__()
+        self.filepath = filepath  # None for "No Ghost" option
+        self.ghost_ride = ghost_ride  # None for "No Ghost" option
+        self.date_str = date_str
+        self.is_current = is_current
+        self.can_focus = True
+
+    def render(self) -> str:
+        if self.ghost_ride is None:
+            # "No Ghost" option
+            marker = "→" if self.is_current else " "
+            return f"{marker} No Ghost"
+
+        # Format: "→ 2025-12-16 16:24 | 5.2km | 12:34"
+        total_km = self.ghost_ride.total_distance / 1000
+        mins = int(self.ghost_ride.total_time // 60)
+        secs = int(self.ghost_ride.total_time % 60)
+
+        marker = "→" if self.is_current else " "
+        return f"{marker} {self.date_str} | {total_km:.1f}km | {mins:02d}:{secs:02d}"
+
+
+class GhostModal(ModalScreen[str | None]):
+    """Modal dialog for selecting a ghost ride.
+
+    Returns:
+        None if cancelled (no change)
+        "NO_GHOST" if "No Ghost" was explicitly selected
+        str(filepath) if a ghost was selected
+    """
+
+    BINDINGS = [
+        ("escape", "cancel", "Cancel"),
+        ("up", "navigate_up", "Up"),
+        ("down", "navigate_down", "Down"),
+        ("enter", "select", "Select"),
+        ("d", "delete", "Delete"),
+    ]
+
+    CSS = """
+    GhostModal {
+        align: center middle;
+        background: transparent;
+    }
+
+    #ghost-dialog {
+        width: 60;
+        height: 25;
+        border: round white;
+        background: $background 60%;
+        padding: 1;
+    }
+
+    #header {
+        width: 100%;
+        height: auto;
+        content-align: center middle;
+        padding-bottom: 1;
+        border-bottom: solid white;
+    }
+
+    #ghost-list {
+        width: 100%;
+        height: 1fr;
+        padding: 1;
+    }
+
+    GhostItem {
+        margin: 0;
+        padding: 0 1;
+        background: transparent;
+        border: round $surface;
+    }
+
+    GhostItem:focus {
+        border: round white;
+    }
+
+    #buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+        padding: 1;
+        border-top: solid white;
+    }
+
+    Button {
+        margin: 0 1;
+        background: transparent;
+        border: round $surface;
+        color: white;
+    }
+
+    Button:focus {
+        border: round white;
+    }
+    """
+
+    def __init__(self, route_name: str, current_ghost: GhostRide | None):
+        super().__init__()
+        self.route_name = route_name
+        self.current_ghost = current_ghost
+        self.ghost_items: list[GhostItem] = []
+        self.current_index = 0
+
+    def compose(self) -> ComposeResult:
+        """Create the ghost selection dialog."""
+        with Container(id="ghost-dialog"):
+            yield Label("Select Ghost Rider", id="header")
+            with VerticalScroll(id="ghost-list"):
+                pass  # Items will be added in on_mount
+            with Horizontal(id="buttons"):
+                yield Button("Select", id="select-btn")
+                yield Button("Cancel", id="cancel-btn")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        """Load ghosts and populate the list."""
+        ghost_list = self.query_one("#ghost-list", VerticalScroll)
+
+        # Load all ghosts for this route
+        all_ghosts = load_all_ghosts(self.route_name)
+
+        # Add "No Ghost" option first
+        no_ghost_item = GhostItem(None, None, "", self.current_ghost is None)
+        ghost_list.mount(no_ghost_item)
+        self.ghost_items.append(no_ghost_item)
+
+        # Add all ghost rides
+        for filepath, ghost_ride in all_ghosts:
+            date_str = parse_ride_datetime(filepath)
+            is_current = (self.current_ghost is not None and
+                         self.current_ghost.filepath == filepath)
+            ghost_item = GhostItem(filepath, ghost_ride, date_str, is_current)
+            ghost_list.mount(ghost_item)
+            self.ghost_items.append(ghost_item)
+
+        # Focus the current selection or first item
+        if self.current_ghost is not None:
+            # Find the index of current ghost
+            for i, item in enumerate(self.ghost_items):
+                if item.is_current:
+                    self.current_index = i
+                    break
+
+        if self.ghost_items:
+            self.ghost_items[self.current_index].focus()
+
+    def action_navigate_up(self) -> None:
+        """Navigate to previous ghost."""
+        if not self.ghost_items:
+            return
+
+        self.current_index = (self.current_index - 1) % len(self.ghost_items)
+        self.ghost_items[self.current_index].focus()
+
+    def action_navigate_down(self) -> None:
+        """Navigate to next ghost."""
+        if not self.ghost_items:
+            return
+
+        self.current_index = (self.current_index + 1) % len(self.ghost_items)
+        self.ghost_items[self.current_index].focus()
+
+    def action_select(self) -> None:
+        """Select the focused ghost."""
+        if not self.ghost_items:
+            self.dismiss(None)
+            return
+
+        selected_item = self.ghost_items[self.current_index]
+
+        if selected_item.filepath is None:
+            # "No Ghost" option selected
+            self.dismiss("NO_GHOST")
+        else:
+            # Actual ghost selected
+            self.dismiss(str(selected_item.filepath))
+
+    def action_cancel(self) -> None:
+        """Cancel without changing selection."""
+        self.dismiss(None)
+
+    def action_delete(self) -> None:
+        """Delete the focused ghost ride."""
+        if not self.ghost_items or self.current_index >= len(self.ghost_items):
+            return
+
+        selected_item = self.ghost_items[self.current_index]
+
+        # Can't delete "No Ghost" option
+        if selected_item.filepath is None:
+            return
+
+        # Delete the CSV file
+        try:
+            selected_item.filepath.unlink()
+        except Exception:
+            return  # Failed to delete
+
+        # Remove from list
+        ghost_list = self.query_one("#ghost-list", VerticalScroll)
+        ghost_list.remove_children([selected_item])
+        self.ghost_items.remove(selected_item)
+
+        # Adjust index if needed
+        if self.current_index >= len(self.ghost_items):
+            self.current_index = len(self.ghost_items) - 1
+
+        # Focus next item
+        if self.ghost_items:
+            self.ghost_items[self.current_index].focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button press."""
+        if event.button.id == "select-btn":
+            self.action_select()
+        elif event.button.id == "cancel-btn":
+            self.action_cancel()
 
 
 class PauseRideModal(ModalScreen[str]):
@@ -200,6 +439,7 @@ class RidingScreen(Screen):
         ("d", "show_devices", "Devices"),
         ("m", "toggle_mode", "Mode"),
         ("h", "show_help", "Help"),
+        ("g", "show_ghosts", "Ghost"),
         ("space", "stop_ride", "Start/Pause"),
         # Hidden bindings - functional but not shown in footer
         Binding("1", "test_resistance_low", "Test: Low Resistance", show=False),
@@ -323,6 +563,31 @@ class RidingScreen(Screen):
     def action_show_help(self) -> None:
         """Show the help modal."""
         self.app.push_screen(HelpModal())
+
+    def action_show_ghosts(self) -> None:
+        """Show the ghost selection modal."""
+        # Only allow before ride starts
+        if self.ride_state != "not_started":
+            return
+
+        self.app.push_screen(GhostModal(self.route.name, self.ghost_ride), self.handle_ghost_choice)
+
+    def handle_ghost_choice(self, choice: str | None) -> None:
+        """Handle ghost selection from modal.
+
+        Args:
+            choice: None (cancelled), "NO_GHOST" (clear ghost), or filepath string
+        """
+        if choice is None:
+            # Cancelled - no change
+            return
+        elif choice == "NO_GHOST":
+            # Explicitly cleared ghost
+            self.ghost_ride = None
+        else:
+            # Load the selected ghost
+            ghost_path = Path(choice)
+            self.ghost_ride = load_ghost_ride(ghost_path)
 
     def action_stop_ride(self) -> None:
         """Handle space bar - start/pause the ride."""
