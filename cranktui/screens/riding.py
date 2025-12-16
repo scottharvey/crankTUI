@@ -133,7 +133,7 @@ def parse_ride_datetime(filepath: Path) -> str:
     return f"{date_part} {time_part}"
 
 
-class GhostItem(Static):
+class GhostItem(Static, can_focus=True):
     """Widget representing a single ghost ride option."""
 
     def __init__(self, filepath: Path | None, ghost_ride: GhostRide | None, date_str: str, is_current: bool):
@@ -142,7 +142,6 @@ class GhostItem(Static):
         self.ghost_ride = ghost_ride  # None for "No Ghost" option
         self.date_str = date_str
         self.is_current = is_current
-        self.can_focus = True
 
     def render(self) -> str:
         if self.ghost_ride is None:
@@ -170,10 +169,6 @@ class GhostModal(ModalScreen[str | None]):
 
     BINDINGS = [
         ("escape", "cancel", "Cancel"),
-        ("up", "navigate_up", "Up"),
-        ("down", "navigate_down", "Down"),
-        ("enter", "select", "Select"),
-        ("d", "delete", "Delete"),
     ]
 
     CSS = """
@@ -215,6 +210,14 @@ class GhostModal(ModalScreen[str | None]):
         border: round white;
     }
 
+    #help-text {
+        width: 100%;
+        height: auto;
+        content-align: center middle;
+        padding: 1;
+        color: $text-muted;
+    }
+
     #buttons {
         width: 100%;
         height: auto;
@@ -248,12 +251,13 @@ class GhostModal(ModalScreen[str | None]):
             yield Label("Select Ghost Rider", id="header")
             with VerticalScroll(id="ghost-list"):
                 pass  # Items will be added in on_mount
+            yield Static("Press 'd' to delete | ↑↓ to navigate | Enter to select", id="help-text")
             with Horizontal(id="buttons"):
                 yield Button("Select", id="select-btn")
                 yield Button("Cancel", id="cancel-btn")
         yield Footer()
 
-    def on_mount(self) -> None:
+    async def on_mount(self) -> None:
         """Load ghosts and populate the list."""
         ghost_list = self.query_one("#ghost-list", VerticalScroll)
 
@@ -262,7 +266,7 @@ class GhostModal(ModalScreen[str | None]):
 
         # Add "No Ghost" option first
         no_ghost_item = GhostItem(None, None, "", self.current_ghost is None)
-        ghost_list.mount(no_ghost_item)
+        await ghost_list.mount(no_ghost_item)
         self.ghost_items.append(no_ghost_item)
 
         # Add all ghost rides
@@ -271,7 +275,7 @@ class GhostModal(ModalScreen[str | None]):
             is_current = (self.current_ghost is not None and
                          self.current_ghost.filepath == filepath)
             ghost_item = GhostItem(filepath, ghost_ride, date_str, is_current)
-            ghost_list.mount(ghost_item)
+            await ghost_list.mount(ghost_item)
             self.ghost_items.append(ghost_item)
 
         # Focus the current selection or first item
@@ -282,26 +286,62 @@ class GhostModal(ModalScreen[str | None]):
                     self.current_index = i
                     break
 
+        # Set focus after everything is mounted
         if self.ghost_items:
+            self.call_after_refresh(self._set_initial_focus)
+
+    def _set_initial_focus(self) -> None:
+        """Set initial focus to the current selection."""
+        if self.ghost_items and self.current_index < len(self.ghost_items):
             self.ghost_items[self.current_index].focus()
 
-    def action_navigate_up(self) -> None:
+    def on_key(self, event) -> None:
+        """Handle key presses."""
+        from cranktui.ble.client import debug_log
+        from textual.events import Key
+
+        debug_log(f"Key pressed: {event.key}")
+
+        if event.key == "up":
+            self._navigate_up()
+            event.prevent_default()
+        elif event.key == "down":
+            self._navigate_down()
+            event.prevent_default()
+        elif event.key == "enter":
+            self._select()
+            event.prevent_default()
+        elif event.key == "d":
+            self.run_worker(self._delete())
+            event.prevent_default()
+
+    def _navigate_up(self) -> None:
         """Navigate to previous ghost."""
+        from cranktui.ble.client import debug_log
+
         if not self.ghost_items:
+            debug_log("Navigate up: no items")
             return
 
+        old_index = self.current_index
         self.current_index = (self.current_index - 1) % len(self.ghost_items)
         self.ghost_items[self.current_index].focus()
+        debug_log(f"Navigate up: {old_index} -> {self.current_index}")
 
-    def action_navigate_down(self) -> None:
+    def _navigate_down(self) -> None:
         """Navigate to next ghost."""
+        from cranktui.ble.client import debug_log
+
         if not self.ghost_items:
+            debug_log("Navigate down: no items")
             return
 
+        old_index = self.current_index
         self.current_index = (self.current_index + 1) % len(self.ghost_items)
         self.ghost_items[self.current_index].focus()
+        debug_log(f"Navigate down: {old_index} -> {self.current_index}")
 
-    def action_select(self) -> None:
+    def _select(self) -> None:
         """Select the focused ghost."""
         if not self.ghost_items:
             self.dismiss(None)
@@ -320,40 +360,50 @@ class GhostModal(ModalScreen[str | None]):
         """Cancel without changing selection."""
         self.dismiss(None)
 
-    def action_delete(self) -> None:
+    async def _delete(self) -> None:
         """Delete the focused ghost ride."""
+        from cranktui.ble.client import debug_log
+        debug_log("Delete action called")
+
         if not self.ghost_items or self.current_index >= len(self.ghost_items):
+            debug_log(f"No items or bad index: items={len(self.ghost_items)}, index={self.current_index}")
             return
 
         selected_item = self.ghost_items[self.current_index]
+        debug_log(f"Deleting item at index {self.current_index}, filepath={selected_item.filepath}")
 
         # Can't delete "No Ghost" option
         if selected_item.filepath is None:
+            debug_log("Cannot delete 'No Ghost' option")
             return
 
         # Delete the CSV file
         try:
             selected_item.filepath.unlink()
-        except Exception:
-            return  # Failed to delete
+            debug_log(f"Deleted file: {selected_item.filepath}")
+        except Exception as e:
+            debug_log(f"Failed to delete ghost: {e}")
+            return
 
-        # Remove from list
+        # Remove from UI
         ghost_list = self.query_one("#ghost-list", VerticalScroll)
-        ghost_list.remove_children([selected_item])
+        await selected_item.remove()
         self.ghost_items.remove(selected_item)
+        debug_log(f"Removed from UI, {len(self.ghost_items)} items remaining")
 
         # Adjust index if needed
         if self.current_index >= len(self.ghost_items):
-            self.current_index = len(self.ghost_items) - 1
+            self.current_index = max(0, len(self.ghost_items) - 1)
 
         # Focus next item
         if self.ghost_items:
             self.ghost_items[self.current_index].focus()
+            debug_log(f"Focused item at index {self.current_index}")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button press."""
         if event.button.id == "select-btn":
-            self.action_select()
+            self._select()
         elif event.button.id == "cancel-btn":
             self.action_cancel()
 
