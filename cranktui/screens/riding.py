@@ -297,11 +297,6 @@ class GhostModal(ModalScreen[str | None]):
 
     def on_key(self, event) -> None:
         """Handle key presses."""
-        from cranktui.ble.client import debug_log
-        from textual.events import Key
-
-        debug_log(f"Key pressed: {event.key}")
-
         if event.key == "up":
             self._navigate_up()
             event.prevent_default()
@@ -317,29 +312,19 @@ class GhostModal(ModalScreen[str | None]):
 
     def _navigate_up(self) -> None:
         """Navigate to previous ghost."""
-        from cranktui.ble.client import debug_log
-
         if not self.ghost_items:
-            debug_log("Navigate up: no items")
             return
 
-        old_index = self.current_index
         self.current_index = (self.current_index - 1) % len(self.ghost_items)
         self.ghost_items[self.current_index].focus()
-        debug_log(f"Navigate up: {old_index} -> {self.current_index}")
 
     def _navigate_down(self) -> None:
         """Navigate to next ghost."""
-        from cranktui.ble.client import debug_log
-
         if not self.ghost_items:
-            debug_log("Navigate down: no items")
             return
 
-        old_index = self.current_index
         self.current_index = (self.current_index + 1) % len(self.ghost_items)
         self.ghost_items[self.current_index].focus()
-        debug_log(f"Navigate down: {old_index} -> {self.current_index}")
 
     def _select(self) -> None:
         """Select the focused ghost."""
@@ -362,34 +347,24 @@ class GhostModal(ModalScreen[str | None]):
 
     async def _delete(self) -> None:
         """Delete the focused ghost ride."""
-        from cranktui.ble.client import debug_log
-        debug_log("Delete action called")
-
         if not self.ghost_items or self.current_index >= len(self.ghost_items):
-            debug_log(f"No items or bad index: items={len(self.ghost_items)}, index={self.current_index}")
             return
 
         selected_item = self.ghost_items[self.current_index]
-        debug_log(f"Deleting item at index {self.current_index}, filepath={selected_item.filepath}")
 
         # Can't delete "No Ghost" option
         if selected_item.filepath is None:
-            debug_log("Cannot delete 'No Ghost' option")
             return
 
         # Delete the CSV file
         try:
             selected_item.filepath.unlink()
-            debug_log(f"Deleted file: {selected_item.filepath}")
-        except Exception as e:
-            debug_log(f"Failed to delete ghost: {e}")
+        except Exception:
             return
 
         # Remove from UI
-        ghost_list = self.query_one("#ghost-list", VerticalScroll)
         await selected_item.remove()
         self.ghost_items.remove(selected_item)
-        debug_log(f"Removed from UI, {len(self.ghost_items)} items remaining")
 
         # Adjust index if needed
         if self.current_index >= len(self.ghost_items):
@@ -398,7 +373,6 @@ class GhostModal(ModalScreen[str | None]):
         # Focus next item
         if self.ghost_items:
             self.ghost_items[self.current_index].focus()
-            debug_log(f"Focused item at index {self.current_index}")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button press."""
